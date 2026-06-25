@@ -1,0 +1,13 @@
+{
+  "name": "ai-job-finder",
+  "version": "1.0.0",
+  "description": "Job Application Tracker with AI",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "node --watch backend/server.js",
+    "dev:frontend": "npm --prefix frontend run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
