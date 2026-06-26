@@ -30,7 +30,7 @@ Two-process local app — no auth, no database, single user.
 - `server.js` — all routes inline, reads/writes `jobs.json` synchronously with `fs.readFileSync`/`fs.writeFileSync`. Initializes `jobs.json` on first run.
 - `scraper.js` — `scrapeJob(url)`: tries og:meta → board-specific selectors (LinkedIn/Indeed) → generic h1 fallback. Returns `{ title, company, location, rawDescription }` or throws.
 - `ai.js` — `generateAIContent(...)`: single Gemini `generateContent` call returning JSON with keys `coverLetter`, `resumeBullets`, `interviewQuestions`, `companyBrief`. Strips markdown fences before `JSON.parse`, retries once on malformed JSON.
-- `jobs.json` — auto-created as `{ "jobs": [] }`. Each job: `{ id, status, title, company, location, url, rawDescription, addedAt, updatedAt, notes, aiContent }`. Status is one of `wishlist | applied | interviewing | offer | rejected`.
+- `jobs.json` — **gitignored runtime data**, auto-created on first server start as `{ "jobs": [] }`. Each job: `{ id, status, title, company, location, url, rawDescription, addedAt, updatedAt, notes, aiContent }`. Status is one of `wishlist | applied | interviewing | offer | rejected`. Treat as user state — never commit.
 - `.env` — `GEMINI_API_KEY` and `PORT=3001`. Never commit this file.
 
 **Frontend** (`frontend/`) — Vite + React, plain CSS (no Tailwind, no TypeScript).
@@ -58,8 +58,15 @@ Two-process local app — no auth, no database, single user.
 
 ## AI Model
 
-Google Gemini 1.5 Flash via `@google/generative-ai`. Key in `backend/.env`. The prompt requests a single JSON object with four string keys. AI-generated content is persisted in `job.aiContent` inside `jobs.json` so it survives page refresh.
+Google **Gemini 2.0 Flash** via `@google/generative-ai` (model id `gemini-2.0-flash` — `gemini-1.5-flash` is deprecated in the v1beta API). Key in `backend/.env`. The prompt requests a single JSON object with four string keys. AI-generated content is persisted in `job.aiContent` inside `jobs.json` so it survives page refresh.
+
+**Known gotcha:** if `/api/ai/test` returns `"limit: 0"`, the API key authenticates but its Google Cloud project has zero free-tier quota. Fix: at [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) click "Create API key in **new project**" — old projects often have quota zeroed.
 
 ## Design System
 
 Linear-inspired dark theme. Key tokens in `index.css :root`: canvas `#010102`, surfaces `--surface-1` through `--surface-4`, accent `--primary: #5e6ad2` (used scarcely — CTA, focus ring, links only). Font: Inter (Google Fonts). Border radii: `--r-md` 8px for buttons/inputs, `--r-lg` 12px for cards, `--r-xl` 16px for modals.
+
+## Repo & Plans
+
+- GitHub: [nilesh0901/AI-Job-Finder](https://github.com/nilesh0901/AI-Job-Finder) (private). Default branch `master`. PRs use `gh` CLI.
+- v2 cloud-deployment plan (auth + Supabase + Vercel + GitHub Pages landing) lives at `~/.claude/plans/plug-a-web-application-typed-nygaard.md`. Build is phased — read the plan before touching deployment/auth/DB work.
