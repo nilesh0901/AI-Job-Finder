@@ -5,6 +5,20 @@ backend/jobs.json
 frontend/node_modules/
 frontend/dist/
 
+# v2 Python backend
+backend-py/.env
+backend-py/venv/
+backend-py/__pycache__/
+backend-py/**/__pycache__/
+backend-py/*.pyc
+
+# v2 React frontend
+frontend-v2/node_modules/
+frontend-v2/dist/
+frontend-v2/.env
+frontend-v2/.env.local
+frontend-v2/.env.*.local
+
 # Vite boilerplate assets (unused)
 frontend/src/assets/
 frontend/src/App.css

@@ -1,0 +1,18 @@
+# Railway uses Nixpacks to build this service.
+# WeasyPrint (PDF generation) needs Cairo, Pango, and GDK-PixBuf system libraries
+# at runtime — without these, `import weasyprint` crashes on startup with
+# "cannot load library 'libpango-1.0.so.0'".
+
+[phases.setup]
+aptPkgs = [
+  "libpango-1.0-0",
+  "libpangoft2-1.0-0",
+  "libcairo2",
+  "libgdk-pixbuf-2.0-0",
+  "libffi-dev",
+  "shared-mime-info",
+  "fonts-liberation",
+]
+
+[start]
+cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
