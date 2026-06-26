@@ -255,7 +255,7 @@ a { color: var(--primary); text-decoration: none; }
   max-height: 90dvh; display: flex; flex-direction: column;
   box-shadow: var(--shadow);
 }
-.modal-lg { max-width: 680px; }
+.modal-lg { max-width: 1080px; }   /* wider — JobDetailModal hosts side-by-side resume diff */
 
 .modal-header {
   display: flex; align-items: flex-start; justify-content: space-between;
@@ -329,7 +329,7 @@ a { color: var(--primary); text-decoration: none; }
 
 /* ── ATS Resume section ──────────────────────────────────────────────── */
 .ats-section  { display: flex; flex-direction: column; gap: 12px; }
-.ats-actions  { display: flex; gap: 8px; flex-wrap: wrap; }
+.ats-actions  { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .ats-versions { display: flex; gap: 6px; flex-wrap: wrap; }
 .version-btn {
   padding: 4px 12px; border-radius: 20px; font-size: 12px;
@@ -337,6 +337,42 @@ a { color: var(--primary); text-decoration: none; }
   transition: all var(--transition);
 }
 .version-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(94,106,210,.15); }
+
+/* segmented Diff / Final toggle */
+.ats-view-toggle {
+  display: inline-flex; padding: 2px; gap: 2px;
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.toggle-btn {
+  padding: 4px 14px; font-size: 12px; font-weight: 500;
+  color: var(--ink-3); border-radius: 999px; transition: all var(--transition);
+}
+.toggle-btn.active { background: var(--surface-1); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.toggle-btn:hover:not(.active) { color: var(--ink-2); }
+
+/* diff wrapper + legend */
+.ats-diff {
+  display: flex; flex-direction: column; gap: 10px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden;
+  background: var(--surface-2);
+}
+.ats-diff-legend {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--surface-3);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--ink-2);
+}
+.legend-swatch {
+  display: inline-block; width: 10px; height: 10px;
+  border-radius: 2px; vertical-align: middle; margin-right: 6px;
+}
+.legend-swatch.added   { background: #1f6938; }
+.legend-swatch.removed { background: #6f1b29; }
+.legend-hint  { margin-left: auto; color: var(--ink-3); font-size: 11px; font-style: italic; }
+
+/* react-diff-viewer container — give it room to breathe inside the modal */
+.ats-diff [class*="diff-viewer"] { max-height: 520px; overflow-y: auto; }
 
 /* ── Notes ───────────────────────────────────────────────────────────── */
 .notes-section { display: flex; flex-direction: column; gap: 6px; }
