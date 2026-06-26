@@ -6,10 +6,19 @@
 
 ## Versions
 
+### v1 Series — Local App (Express + React + Gemini)
+| Version | Status | Focus |
+|---|---|---|
+| **v1.0** | ✅ Complete | Initial release — Kanban board, URL scraper, Gemini AI generation, local storage |
+| **v1.1** | ✅ Complete | Setup refinements and documentation |
+| **v1.2** | ✅ Complete | Backend foundation for v2 — FastAPI, Groq AI, Supabase schema, v2 planning |
+| **v1.3** | ✅ Complete | React v2 frontend — auth, Supabase integration, mobile-responsive UI |
+| **v1.4** | 🚀 Latest | Multi-port support, CLAUDE.md guidance, production-ready v2 stack |
+
+### v2 Series — Cloud App (FastAPI + React + Supabase + Groq)
 | Version | Status | Description |
 |---|---|---|
-| **v1.0** (local) | ✅ Complete | Full local app — Express + React + file storage. Zero setup, runs offline. |
-| **v2.0** (cloud) | 🚧 In Progress | Multi-user cloud app — FastAPI + React + Supabase + Vercel. Sign up and use from any device. |
+| **v2.0** | 🚧 In Progress | Multi-user cloud deployment — live authentication, database-backed state, ATS resume generation, PDF export |
 
 ---
 

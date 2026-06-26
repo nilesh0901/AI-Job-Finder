@@ -47,7 +47,8 @@ app = FastAPI(
 
 # CORS — allow the React frontend (Vercel) and local dev
 ALLOWED_ORIGINS = [
-    "http://localhost:5173",   # Vite dev server
+    "http://localhost:5173",   # Vite default (v1 frontend)
+    "http://localhost:5174",   # Vite dev server (v2 frontend — set in vite.config.js)
     "http://localhost:3000",
     os.getenv("FRONTEND_URL", ""),  # set to your Vercel URL in Railway env vars
 ]
