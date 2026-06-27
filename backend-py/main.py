@@ -221,11 +221,16 @@ async def resume_pdf(req: PDFRequest):
 
 # ── Supabase Storage helper ───────────────────────────────────────────────────
 
+BUCKET = "resumes"
+
 async def _upload_pdf_to_supabase(pdf_bytes: bytes, user_id: str, job_id: str) -> str:
     """
-    Upload PDF to Supabase Storage bucket 'resumes'.
+    Upload PDF to Supabase Storage bucket 'resumes' and return a signed URL.
     Path: resumes/{user_id}/{job_id}/{uuid}.pdf
-    Returns public URL.
+
+    The bucket is auto-created (private) on first use so deployment needs no
+    manual Storage setup. Resumes contain personal data, so the bucket is
+    private and we hand back a time-limited signed URL rather than a public one.
     """
     import httpx
 
@@ -237,20 +242,36 @@ async def _upload_pdf_to_supabase(pdf_bytes: bytes, user_id: str, job_id: str) -
 
     file_name = f"{uuid.uuid4()}.pdf"
     path      = f"{user_id}/{job_id}/{file_name}"
-    bucket    = "resumes"
+    auth      = {"Authorization": f"Bearer {service_key}"}
 
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            f"{supabase_url}/storage/v1/object/{bucket}/{path}",
-            headers={
-                "Authorization": f"Bearer {service_key}",
-                "Content-Type":  "application/pdf",
-            },
-            content=pdf_bytes,
-            timeout=30,
+    async with httpx.AsyncClient(timeout=30) as client:
+        # 1. Ensure the bucket exists (idempotent — ignore "already exists").
+        await client.post(
+            f"{supabase_url}/storage/v1/bucket",
+            headers={**auth, "Content-Type": "application/json"},
+            json={"id": BUCKET, "name": BUCKET, "public": False},
         )
-        if r.status_code not in (200, 201):
-            raise RuntimeError(f"Supabase Storage upload failed: {r.text}")
 
-    # Return public URL
-    return f"{supabase_url}/storage/v1/object/public/{bucket}/{path}"
+        # 2. Upload the PDF.
+        up = await client.post(
+            f"{supabase_url}/storage/v1/object/{BUCKET}/{path}",
+            headers={**auth, "Content-Type": "application/pdf"},
+            content=pdf_bytes,
+        )
+        if up.status_code not in (200, 201):
+            raise RuntimeError(f"Supabase Storage upload failed: {up.text}")
+
+        # 3. Mint a signed URL (valid 1 hour) — enough for an immediate download.
+        sign = await client.post(
+            f"{supabase_url}/storage/v1/object/sign/{BUCKET}/{path}",
+            headers={**auth, "Content-Type": "application/json"},
+            json={"expiresIn": 3600},
+        )
+        if sign.status_code != 200:
+            raise RuntimeError(f"Supabase signed URL failed: {sign.text}")
+        signed_path = sign.json().get("signedURL") or sign.json().get("signedUrl")
+
+    if not signed_path:
+        raise RuntimeError("Supabase did not return a signed URL")
+    # signed_path is relative, e.g. "/object/sign/resumes/...?token=..."
+    return f"{supabase_url}/storage/v1{signed_path}"
