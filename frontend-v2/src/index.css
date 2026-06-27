@@ -44,6 +44,16 @@ a { color: var(--primary); text-decoration: none; }
 .spinning { animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.splash-error {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  max-width: 420px; padding: 32px; text-align: center;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--r-lg);
+}
+.splash-error-icon { font-size: 32px; color: var(--danger); }
+.splash-error h2   { font-size: 16px; font-weight: 600; }
+.splash-error-msg  { font-size: 13px; color: var(--ink-2); line-height: 1.5; word-break: break-word; }
+.onboard-error { margin-top: 8px; }
+
 /* ── Buttons ─────────────────────────────────────────────────────────── */
 .btn-primary {
   background: var(--primary); color: #fff;

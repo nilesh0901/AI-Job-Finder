@@ -9,16 +9,35 @@ const TECH_SUGGESTIONS = [
   'Next.js','Vue.js','GraphQL','REST APIs','Git','CI/CD',
 ]
 
+// Each experience bucket maps to the midpoint year-count we persist as an int.
+// The UI label shows the range; the DB stores a single int (matches Settings input).
+const EXPERIENCE_BUCKETS = [
+  { label: '0–1 yrs',  years: 1  },
+  { label: '1–3 yrs',  years: 2  },
+  { label: '3–5 yrs',  years: 4  },
+  { label: '5–8 yrs',  years: 6  },
+  { label: '8–12 yrs', years: 10 },
+  { label: '12+ yrs',  years: 15 },
+]
+
+// Convert a string|number|empty-string into a safe int|null for the DB.
+function toIntOrNull(v) {
+  if (v === '' || v === null || v === undefined) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.round(n) : null
+}
+
 export default function Onboarding({ onComplete }) {
   const [step, setStep]   = useState(0)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const [form, setForm]   = useState({
     full_name: '',
     field: '',
     domain: '',
-    years_experience: '',
+    years_experience: null,         // int|null, never empty string
     tech_stack: [],
-    expected_salary_min: '',
+    expected_salary_min: '',        // raw input, coerced on finish()
     expected_salary_max: '',
     expected_salary_currency: 'USD',
   })
@@ -33,11 +52,21 @@ export default function Onboarding({ onComplete }) {
 
   async function finish() {
     setSaving(true)
+    setError('')
     try {
-      await saveUserProfile({ ...form, onboarding_done: true })
+      // Coerce every numeric field — empty strings into int columns blow up Postgres
+      const payload = {
+        ...form,
+        years_experience:    toIntOrNull(form.years_experience),
+        expected_salary_min: toIntOrNull(form.expected_salary_min),
+        expected_salary_max: toIntOrNull(form.expected_salary_max),
+        onboarding_done: true,
+      }
+      await saveUserProfile(payload)
       onComplete()
     } catch (e) {
-      console.error(e)
+      console.error('Onboarding save failed:', e)
+      setError(e?.message || 'Could not save. Please check your connection and try again.')
     } finally {
       setSaving(false)
     }
@@ -74,11 +103,12 @@ export default function Onboarding({ onComplete }) {
             <h2>Years of experience?</h2>
             <p className="onboard-sub">Used to calibrate seniority in cover letters.</p>
             <div className="exp-grid">
-              {['0–1', '1–3', '3–5', '5–8', '8–12', '12+'].map((label, i) => (
-                <button key={label}
-                  className={`exp-btn ${form.years_experience === String(i + 1) ? 'active' : ''}`}
-                  onClick={() => set('years_experience', String(i + 1))}>
-                  {label} yrs
+              {EXPERIENCE_BUCKETS.map(b => (
+                <button key={b.label}
+                  type="button"
+                  className={`exp-btn ${form.years_experience === b.years ? 'active' : ''}`}
+                  onClick={() => set('years_experience', b.years)}>
+                  {b.label}
                 </button>
               ))}
             </div>
@@ -129,18 +159,22 @@ export default function Onboarding({ onComplete }) {
           </div>
         )}
 
+        {error && <p className="form-error onboard-error">{error}</p>}
+
         {/* Nav buttons */}
         <div className="onboard-nav">
           {step > 0 && (
-            <button className="btn-ghost" onClick={() => setStep(s => s - 1)}>Back</button>
+            <button type="button" className="btn-ghost" onClick={() => setStep(s => s - 1)}>Back</button>
           )}
-          <button className="btn-ghost skip" onClick={step < STEPS.length - 1 ? () => setStep(s => s + 1) : finish}>
+          <button type="button" className="btn-ghost skip"
+            onClick={step < STEPS.length - 1 ? () => setStep(s => s + 1) : finish}
+            disabled={saving}>
             Skip
           </button>
           {step < STEPS.length - 1 ? (
-            <button className="btn-primary" onClick={() => setStep(s => s + 1)}>Next</button>
+            <button type="button" className="btn-primary" onClick={() => setStep(s => s + 1)}>Next</button>
           ) : (
-            <button className="btn-primary" onClick={finish} disabled={saving}>
+            <button type="button" className="btn-primary" onClick={finish} disabled={saving}>
               {saving ? 'Saving…' : 'Get started →'}
             </button>
           )}
