@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued'
 import { updateJob, deleteJob, getMasterResume, getUserProfile,
          generateAIContent, generateATSResume, generateResumePDF,
-         saveATSResume, getATSResumes } from '../api'
+         saveATSResume, getATSResumes, scoreATSResume, saveATSFeedback } from '../api'
 import { useAuth } from './AuthProvider'
 
 const STATUSES = ['wishlist','applied','interviewing','offer','rejected']
@@ -56,6 +56,10 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
   const [generating, setGenerating] = useState(false)
   const [generatingAts, setGeneratingAts] = useState(false)
   const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [atsScore, setAtsScore] = useState(null)
+  const [scoring, setScoring] = useState(false)
+  const [feedback, setFeedback] = useState({ rating: 0, keptChanges: null, comments: '' })
+  const [feedbackSaved, setFeedbackSaved] = useState(false)
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState(false)
 
@@ -118,7 +122,7 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
       const { resumeText } = await generateATSResume({
         jobDescription: job.raw_description, masterResume: resume, userProfile: profile,
       })
-      const saved = await saveATSResume(job.id, resumeText)
+      const saved = await saveATSResume(job.id, resumeText, resume)
       setAtsResumes(prev => [saved, ...prev])
       setSelectedAts(saved)
       setDiffView(true)   // default view on a fresh generation = show what changed
@@ -136,6 +140,36 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
       window.open(pdfUrl, '_blank')
     } catch (e) { setError(e.message) }
     finally { setGeneratingPdf(false) }
+  }
+
+  async function handleScore() {
+    if (!selectedAts || !job.raw_description) return
+    setScoring(true); setError('')
+    try {
+      const result = await scoreATSResume({
+        resumeText: selectedAts.content,
+        jobDescription: job.raw_description,
+      })
+      setAtsScore(result)
+    } catch (e) { setError(e.message) }
+    finally { setScoring(false) }
+  }
+
+  async function handleFeedback(patch) {
+    const updated = { ...feedback, ...patch }
+    setFeedback(updated)
+    if (updated.rating > 0 && updated.keptChanges !== null && selectedAts) {
+      try {
+        await saveATSFeedback({
+          atsResumeId: selectedAts.id,
+          jobId: job.id,
+          rating: updated.rating,
+          keptChanges: updated.keptChanges,
+          comments: updated.comments,
+        })
+        setFeedbackSaved(true)
+      } catch (e) { console.error('Feedback save failed:', e) }
+    }
   }
 
   async function handleDelete() {
@@ -204,6 +238,7 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
           {/* ATS Resume tab */}
           {activeTab === 4 && (
             <div className="ats-section">
+              {/* Actions row */}
               <div className="ats-actions">
                 <button className="btn-primary" onClick={handleGenerateATS} disabled={generatingAts}>
                   {generatingAts ? '✦ Tailoring…' : selectedAts ? '✦ Regenerate (new version)' : '✦ Generate Tailored Resume'}
@@ -211,29 +246,67 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
                 {selectedAts && (
                   <>
                     <div className="ats-view-toggle" role="group" aria-label="Resume view">
-                      <button
-                        className={`toggle-btn ${diffView ? 'active' : ''}`}
-                        onClick={() => setDiffView(true)}
-                        title="Show what the AI changed">
-                        Diff
-                      </button>
-                      <button
-                        className={`toggle-btn ${!diffView ? 'active' : ''}`}
-                        onClick={() => setDiffView(false)}
-                        title="Show only the tailored resume">
-                        Final
-                      </button>
+                      <button className={`toggle-btn ${diffView ? 'active' : ''}`}
+                        onClick={() => setDiffView(true)} title="Show what the AI changed">Diff</button>
+                      <button className={`toggle-btn ${!diffView ? 'active' : ''}`}
+                        onClick={() => setDiffView(false)} title="Show only the tailored resume">Final</button>
                     </div>
                     <button className="btn-ghost" onClick={handleCopyAts}>
                       {copiedAts ? '✓ Copied' : '⧉ Copy'}
                     </button>
+                    <button className="btn-ghost" onClick={handleScore} disabled={scoring}>
+                      {scoring ? 'Scoring…' : '◎ ATS Score'}
+                    </button>
                     <button className="btn-ghost" onClick={handleDownloadPDF} disabled={generatingPdf}>
-                      {generatingPdf ? 'Generating PDF…' : '⬇ Download PDF'}
+                      {generatingPdf ? 'Generating PDF…' : '⬇ PDF'}
                     </button>
                   </>
                 )}
               </div>
               {error && <p className="form-error">{error}</p>}
+
+              {/* ATS Score panel */}
+              {atsScore && (
+                <div className="ats-score-panel">
+                  <div className="ats-score-header">
+                    <div className="ats-score-dial" style={{
+                      color: atsScore.overall_score >= 75 ? 'var(--success)'
+                           : atsScore.overall_score >= 50 ? '#f5a623'
+                           : 'var(--danger)'
+                    }}>
+                      <span className="ats-score-number">{atsScore.overall_score}</span>
+                      <span className="ats-score-label">/ 100</span>
+                    </div>
+                    <div className="ats-score-breakdown">
+                      <div className="ats-score-sub">Keywords <strong>{atsScore.keyword_score}%</strong></div>
+                      <div className="ats-score-sub">Structure <strong>{atsScore.structure_score}%</strong></div>
+                    </div>
+                  </div>
+                  <div className="ats-keywords">
+                    <div className="ats-kw-group">
+                      <span className="ats-kw-label">✓ Found</span>
+                      <div className="ats-chips">
+                        {atsScore.keywords_found.map(k => (
+                          <span key={k} className="ats-chip ats-chip-found">{k}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="ats-kw-group">
+                      <span className="ats-kw-label">✗ Missing</span>
+                      <div className="ats-chips">
+                        {atsScore.keywords_missing.map(k => (
+                          <span key={k} className="ats-chip ats-chip-missing">{k}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  {atsScore.improvements?.length > 0 && (
+                    <ul className="ats-improvements">
+                      {atsScore.improvements.map((tip, i) => <li key={i}>{tip}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
 
               {/* Version history */}
               {atsResumes.length > 0 && (
@@ -241,13 +314,14 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
                   {atsResumes.map(r => (
                     <button key={r.id}
                       className={`version-btn ${selectedAts?.id === r.id ? 'active' : ''}`}
-                      onClick={() => setSelectedAts(r)}>
+                      onClick={() => { setSelectedAts(r); setAtsScore(null) }}>
                       v{r.version} · {formatDate(r.created_at)}
                     </button>
                   ))}
                 </div>
               )}
 
+              {/* Resume content */}
               {selectedAts ? (
                 diffView ? (
                   <div className="ats-diff">
@@ -256,20 +330,22 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
                       <span><span className="legend-swatch added" /> Tailored for {job.company || 'this role'}</span>
                       <span className="legend-hint">Highlighted words = what the AI changed</span>
                     </div>
-                    <ReactDiffViewer
-                      oldValue={masterResume || '(your master resume is empty — add it in Settings to see the diff)'}
-                      newValue={selectedAts.content}
-                      splitView
-                      compareMethod={DiffMethod.WORDS}
-                      useDarkTheme
-                      hideLineNumbers={false}
-                      leftTitle="Your Master Resume"
-                      rightTitle={`Tailored — v${selectedAts.version}`}
-                      styles={DIFF_STYLES}
-                    />
+                    <div className="ats-diff-scroll">
+                      <ReactDiffViewer
+                        oldValue={selectedAts.master_resume_snapshot || masterResume || '(add your master resume in Settings to see the diff)'}
+                        newValue={selectedAts.content}
+                        splitView
+                        compareMethod={DiffMethod.WORDS}
+                        useDarkTheme
+                        hideLineNumbers={false}
+                        leftTitle="Your Master Resume"
+                        rightTitle={`Tailored — v${selectedAts.version}`}
+                        styles={DIFF_STYLES}
+                      />
+                    </div>
                   </div>
                 ) : (
-                  <pre className="ai-text">{selectedAts.content}</pre>
+                  <pre className="ai-text ats-final-text">{selectedAts.content}</pre>
                 )
               ) : (
                 <p className="ai-empty">
@@ -277,6 +353,39 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
                   surgical edits to your master resume (no fabrications) and show you a side-by-side
                   diff of every change.
                 </p>
+              )}
+
+              {/* Feedback */}
+              {selectedAts && (
+                <div className="ats-feedback">
+                  <div className="ats-feedback-label">Was this resume tailoring helpful?</div>
+                  <div className="ats-stars">
+                    {[1,2,3,4,5].map(n => (
+                      <button key={n} type="button"
+                        className={`star-btn ${feedback.rating >= n ? 'active' : ''}`}
+                        onClick={() => handleFeedback({ rating: n })}>★</button>
+                    ))}
+                  </div>
+                  {feedback.rating > 0 && (
+                    <>
+                      <div className="ats-feedback-row">
+                        <span className="ats-feedback-sub">Did you keep the AI changes?</span>
+                        <button type="button"
+                          className={`btn-ghost btn-sm ${feedback.keptChanges === true ? 'active-choice' : ''}`}
+                          onClick={() => handleFeedback({ keptChanges: true })}>Yes</button>
+                        <button type="button"
+                          className={`btn-ghost btn-sm ${feedback.keptChanges === false ? 'active-choice' : ''}`}
+                          onClick={() => handleFeedback({ keptChanges: false })}>No</button>
+                      </div>
+                      <textarea className="input textarea" rows={2}
+                        placeholder="Optional: what could be improved?"
+                        value={feedback.comments}
+                        onChange={e => setFeedback(f => ({ ...f, comments: e.target.value }))}
+                        onBlur={() => handleFeedback({})} />
+                      {feedbackSaved && <p className="ats-feedback-saved">✓ Feedback saved</p>}
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}
