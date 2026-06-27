@@ -29,3 +29,6 @@ frontend/public/icons.svg
 *.pdf
 master_resume*.txt
 resume*.txt
+
+# Local-only working folder
+Project JobHunt/
