@@ -1,9 +1,22 @@
 """
 pdf.py — Convert ATS resume plain text → styled PDF bytes
-Uses WeasyPrint for server-side PDF generation (no external service needed)
+
+Uses fpdf2 (pure Python, no native system libraries). WeasyPrint was dropped
+because it needs GObject/Pango/Cairo shared libs that aren't present in
+Railway's nixpacks image (the "cannot load library 'gobject-2.0-0'" 500).
+fpdf2 has no such dependencies and runs anywhere.
 """
 
 import re
+
+from fpdf import FPDF
+
+# Section headers = ALL-CAPS lines (SUMMARY, EXPERIENCE, SKILLS, etc.)
+SECTION_RE = re.compile(r"^([A-Z][A-Z\s&/]{3,})$")
+
+# Letter page, points. 0.75in margin = 54pt.
+MARGIN = 54
+LINE_H = 14
 
 
 def resume_to_pdf(resume_text: str) -> bytes:
@@ -11,94 +24,58 @@ def resume_to_pdf(resume_text: str) -> bytes:
     Convert plain-text ATS resume to a clean, professional PDF.
     Returns raw PDF bytes — caller uploads to Supabase Storage.
     """
-    from weasyprint import HTML
+    pdf = FPDF(format="Letter", unit="pt")
+    pdf.set_auto_page_break(auto=True, margin=MARGIN)
+    pdf.set_margins(MARGIN, MARGIN, MARGIN)
+    pdf.add_page()
 
-    html = _text_to_html(resume_text)
-    pdf_bytes = HTML(string=html).write_pdf()
-    return pdf_bytes
+    width = pdf.w - pdf.l_margin - pdf.r_margin
 
+    for raw in resume_text.strip().split("\n"):
+        line = _sanitize(raw.strip())
 
-def _text_to_html(text: str) -> str:
-    """Transform plain resume text into styled HTML for WeasyPrint."""
+        if not line:
+            pdf.ln(5)
+            continue
 
-    # Section headers: ALL CAPS lines (SUMMARY, EXPERIENCE, SKILLS, etc.)
-    SECTION_RE = re.compile(r"^([A-Z][A-Z\s&/]{3,})$", re.MULTILINE)
-
-    lines = text.strip().split("\n")
-    html_lines = []
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            html_lines.append('<div class="spacer"></div>')
-        elif SECTION_RE.match(stripped):
-            html_lines.append(f'<h2 class="section">{stripped}</h2><hr class="rule"/>')
-        elif stripped.startswith("•") or stripped.startswith("-"):
-            content = stripped.lstrip("•- ").strip()
-            html_lines.append(f'<li>{content}</li>')
+        if SECTION_RE.match(line):
+            pdf.ln(4)
+            pdf.set_font("Times", "B", 11)
+            pdf.set_text_color(20, 20, 20)
+            pdf.multi_cell(width, LINE_H, line.upper())
+            rule_y = pdf.get_y() + 1
+            pdf.set_draw_color(60, 60, 60)
+            pdf.line(pdf.l_margin, rule_y, pdf.l_margin + width, rule_y)
+            pdf.ln(5)
+        elif line[0] in "•-*":
+            content = line.lstrip("•-* ").strip()
+            pdf.set_font("Times", "", 11)
+            pdf.set_text_color(17, 17, 17)
+            pdf.set_x(pdf.l_margin + 12)
+            # · (middle dot) is latin-1 safe; fpdf2 core fonts reject U+2022.
+            pdf.multi_cell(width - 12, LINE_H, f"·  {content}")
         else:
-            html_lines.append(f'<p>{stripped}</p>')
+            pdf.set_font("Times", "", 11)
+            pdf.set_text_color(17, 17, 17)
+            pdf.multi_cell(width, LINE_H, line)
 
-    body = "\n".join(html_lines)
+    return bytes(pdf.output())
 
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<style>
-  @page {{
-    size: Letter;
-    margin: 0.75in 0.75in 0.75in 0.75in;
-  }}
 
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-
-  body {{
-    font-family: "Georgia", "Times New Roman", serif;
-    font-size: 11pt;
-    color: #111;
-    line-height: 1.45;
-  }}
-
-  h1.name {{
-    font-size: 20pt;
-    letter-spacing: 0.04em;
-    text-align: center;
-    margin-bottom: 2pt;
-  }}
-
-  h2.section {{
-    font-size: 11pt;
-    font-weight: bold;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-top: 10pt;
-    margin-bottom: 1pt;
-    color: #1a1a1a;
-  }}
-
-  hr.rule {{
-    border: none;
-    border-top: 1px solid #333;
-    margin-bottom: 5pt;
-  }}
-
-  p {{
-    margin-bottom: 3pt;
-  }}
-
-  li {{
-    margin-left: 16pt;
-    margin-bottom: 2pt;
-    list-style-type: disc;
-  }}
-
-  .spacer {{
-    height: 4pt;
-  }}
-</style>
-</head>
-<body>
-{body}
-</body>
-</html>"""
+def _sanitize(text: str) -> str:
+    """
+    Map common typographic characters to the latin-1 range so fpdf2's built-in
+    Times font never chokes on smart quotes / em dashes / bullets (its core
+    fonts are strict latin-1).
+    """
+    replacements = {
+        "‘": "'", "’": "'",   # curly single quotes
+        "“": '"', "”": '"',   # curly double quotes
+        "–": "-", "—": "-",   # en / em dash
+        "…": "...",                # ellipsis
+        "•": "·",                  # bullet -> middle dot (latin-1 safe)
+        " ": " ",                  # non-breaking space
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+    return text.encode("latin-1", "replace").decode("latin-1")
