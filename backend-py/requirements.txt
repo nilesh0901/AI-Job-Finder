@@ -5,5 +5,5 @@ beautifulsoup4==4.12.3
 groq==0.12.0
 supabase==2.10.0
 python-dotenv==1.0.1
-weasyprint==62.3
+fpdf2==2.8.1
 python-multipart==0.0.12
