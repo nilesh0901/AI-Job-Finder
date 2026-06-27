@@ -1,12 +1,18 @@
 import { useState } from 'react'
 import { saveUserProfile } from '../api'
 
-const STEPS = ['Field', 'Experience', 'Tech Stack', 'Salary']
+const STEPS = ['Field', 'Experience', 'Tech Stack', 'Salary', 'Job Alerts']
 const TECH_SUGGESTIONS = [
-  'Python','JavaScript','TypeScript','React','Node.js','FastAPI','Django',
-  'PostgreSQL','MongoDB','Redis','Docker','Kubernetes','AWS','GCP','Azure',
-  'LangChain','LangGraph','PyTorch','TensorFlow','Scikit-learn','Pandas',
-  'Next.js','Vue.js','GraphQL','REST APIs','Git','CI/CD',
+  'Python','JavaScript','TypeScript','Java','Go','C#','SQL','React','Node.js',
+  'FastAPI','Django','Spring','PostgreSQL','MongoDB','Redis','Docker','Kubernetes',
+  'AWS','GCP','Azure','LangChain','LangGraph','PyTorch','TensorFlow','Scikit-learn',
+  'Pandas','Next.js','Vue.js','GraphQL','REST APIs','Git','CI/CD',
+  'Figma','Excel','Tableau','Product Management','Salesforce',
+]
+const FRESHNESS_OPTIONS = [
+  { days: 1,  label: 'Last 24 hours', desc: 'Only the freshest postings' },
+  { days: 7,  label: 'Last 7 days',   desc: 'Best balance of volume + recency' },
+  { days: 15, label: 'Last 15 days',  desc: 'Wider net, more options' },
 ]
 
 // Each experience bucket maps to the midpoint year-count we persist as an int.
@@ -31,12 +37,15 @@ export default function Onboarding({ onComplete }) {
   const [step, setStep]   = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [customSkillInput, setCustomSkillInput] = useState('')
   const [form, setForm]   = useState({
     full_name: '',
     field: '',
     domain: '',
     years_experience: null,         // int|null, never empty string
     tech_stack: [],
+    custom_skills: [],              // free-text skills not in the preset list
+    job_freshness_days: 7,         // 1 | 7 | 15
     expected_salary_min: '',        // raw input, coerced on finish()
     expected_salary_max: '',
     expected_salary_currency: 'USD',
@@ -50,6 +59,17 @@ export default function Onboarding({ onComplete }) {
       : [...form.tech_stack, tech])
   }
 
+  function addCustomSkill() {
+    const s = customSkillInput.trim()
+    if (!s || form.custom_skills.includes(s)) { setCustomSkillInput(''); return }
+    set('custom_skills', [...form.custom_skills, s])
+    setCustomSkillInput('')
+  }
+
+  function removeCustomSkill(skill) {
+    set('custom_skills', form.custom_skills.filter(s => s !== skill))
+  }
+
   async function finish() {
     setSaving(true)
     setError('')
@@ -60,6 +80,7 @@ export default function Onboarding({ onComplete }) {
         years_experience:    toIntOrNull(form.years_experience),
         expected_salary_min: toIntOrNull(form.expected_salary_min),
         expected_salary_max: toIntOrNull(form.expected_salary_max),
+        job_freshness_days:  toIntOrNull(form.job_freshness_days) || 7,
         onboarding_done: true,
       }
       await saveUserProfile(payload)
@@ -132,6 +153,28 @@ export default function Onboarding({ onComplete }) {
             {form.tech_stack.length > 0 && (
               <p className="tech-selected">{form.tech_stack.length} selected</p>
             )}
+
+            <div className="custom-skill-row">
+              <input
+                className="input onboard-input"
+                type="text"
+                placeholder="Add other skill…"
+                value={customSkillInput}
+                onChange={e => setCustomSkillInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomSkill() } }}
+              />
+              <button type="button" className="btn-ghost" onClick={addCustomSkill}>+ Add</button>
+            </div>
+            {form.custom_skills.length > 0 && (
+              <div className="tech-grid" style={{ marginTop: 10 }}>
+                {form.custom_skills.map(skill => (
+                  <button key={skill} type="button" className="tech-chip active"
+                    onClick={() => removeCustomSkill(skill)}>
+                    {skill} ✕
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -155,6 +198,24 @@ export default function Onboarding({ onComplete }) {
               <input className="input" type="number" placeholder="Max (e.g. 120000)"
                 value={form.expected_salary_max}
                 onChange={e => set('expected_salary_max', e.target.value)} />
+            </div>
+          </div>
+        )}
+
+        {/* Step 4 — Job Alerts / freshness */}
+        {step === 4 && (
+          <div className="onboard-step">
+            <h2>How recent should suggested jobs be?</h2>
+            <p className="onboard-sub">We'll only show you jobs posted within this window.</p>
+            <div className="freshness-options">
+              {FRESHNESS_OPTIONS.map(opt => (
+                <button key={opt.days} type="button"
+                  className={`freshness-card ${form.job_freshness_days === opt.days ? 'selected' : ''}`}
+                  onClick={() => set('job_freshness_days', opt.days)}>
+                  <span className="freshness-label">{opt.label}</span>
+                  <span className="freshness-desc">{opt.desc}</span>
+                </button>
+              ))}
             </div>
           </div>
         )}

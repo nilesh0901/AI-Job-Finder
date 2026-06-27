@@ -23,7 +23,7 @@ export default function JobCard({ job, onClick }) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`job-card ${isDragging ? 'dragging' : ''}`}
+      className={`job-card ${isDragging ? 'dragging' : ''} ${job.is_suggestion ? 'suggestion-card' : ''}`}
       onClick={onClick}
       {...listeners}
       {...attributes}
@@ -34,6 +34,9 @@ export default function JobCard({ job, onClick }) {
       </div>
       {job.company && <span className="job-card-company">{job.company}</span>}
       {job.location && <span className="job-card-location">📍 {job.location}</span>}
+      {job.is_suggestion && job.source && (
+        <span className="job-card-source">{job.source}</span>
+      )}
       <div className="job-card-footer">
         <span className="job-card-date">{formatDate(job.added_at)}</span>
         {job.url && (

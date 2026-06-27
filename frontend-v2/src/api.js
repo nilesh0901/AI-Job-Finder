@@ -182,6 +182,16 @@ export async function scoreATSResume({ resumeText, jobDescription }) {
   return r.json()
 }
 
+export async function refreshSuggestions(userId) {
+  const r = await fetch(`${API}/suggestions/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
 export async function saveATSFeedback({ atsResumeId, jobId, rating, keptChanges, comments }) {
   const { data: { user } } = await supabase.auth.getUser()
   const { error } = await supabase.from('ats_resume_feedback').insert({

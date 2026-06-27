@@ -1,157 +1,150 @@
 # AI Job Finder
 
-> Kanban-style job application tracker with AI-powered cover letters, resume bullets, interview prep, and ATS-optimized resume generation — built for job seekers who want to stay organized and apply smarter.
+> Kanban-style job application tracker with AI-powered cover letters, resume bullets, interview prep, ATS-optimized resumes, and live job suggestions — built for job seekers who want to stay organized and apply smarter.
+
+The repo holds **two parallel versions** of the same product:
+
+| Version | Status | Stack | Best for |
+|---|---|---|---|
+| **v1** — local app | ✅ Shipped (frozen) | Express + React + `jobs.json` + Google Gemini | Running offline on a single machine |
+| **v2** — cloud app | ✅ Live | FastAPI + React + Supabase + Groq | Multi-user, accessible from any device |
+
+v2 is the actively developed version. v1 remains a self-contained local app.
 
 ---
 
-## Versions
+## v2 — Cloud App
 
-### v1 Series — Local App (Express + React + Gemini)
-| Version | Status | Focus |
-|---|---|---|
-| **v1.0** | ✅ Complete | Initial release — Kanban board, URL scraper, Gemini AI generation, local storage |
-| **v1.1** | ✅ Complete | Setup refinements and documentation |
-| **v1.2** | ✅ Complete | Backend foundation for v2 — FastAPI, Groq AI, Supabase schema, v2 planning |
-| **v1.3** | ✅ Complete | React v2 frontend — auth, Supabase integration, mobile-responsive UI |
-| **v1.4** | 🚀 Latest | Multi-port support, CLAUDE.md guidance, production-ready v2 stack |
+Multi-user, hosted, and database-backed. Sign up with Google or email and your board follows you across devices.
 
-### v2 Series — Cloud App (FastAPI + React + Supabase + Groq)
-| Version | Status | Description |
-|---|---|---|
-| **v2.0** | 🚧 In Progress | Multi-user cloud deployment — live authentication, database-backed state, ATS resume generation, PDF export |
+### Features
 
----
+- **Multi-user auth** — Google SSO + email/password via Supabase Auth; every user's data is isolated by Postgres Row-Level Security.
+- **Kanban board** — drag jobs across Wishlist → Applied → Interviewing → Offer → Rejected. Fully mobile-responsive with a tabbed layout on small screens.
+- **Add by URL or manually** — paste a job posting URL and the scraper extracts title, company, location, and description; login-walled sites (LinkedIn/Indeed) return a clear "paste manually" message.
+- **4-in-1 AI generation** — one click produces a tailored cover letter, resume bullets, interview prep, and a company brief, grounded in your master resume.
+- **ATS resume tailoring** — surgically rewrites your master resume for a specific job (additive skills, rephrased bullets, never fabricated facts), with:
+  - **Final / Diff toggle** — side-by-side comparison against the master resume used at generation time
+  - **ATS Score panel** — overall / keyword / structure scores, matched & missing keywords, and concrete fix tips
+  - **Star feedback** — rate each version (1–5), record whether you kept the changes, and leave a comment
+  - **Version history** — every generation is stored and re-openable
+  - **PDF export** — download any version as a formatted PDF
+- **Job suggestions** — a Suggested rail seeds your board with live openings pulled from **RemoteOK**, **Arbeitnow**, and **Hacker News "Who is Hiring"**, filtered by your profile keywords and freshness preference, URL-validated and de-duplicated against your board. Drag a suggestion into any column to promote it to a tracked job.
+- **Onboarding** — a first-login wizard captures your field, experience, tech stack (including free-text custom skills), salary expectations, and how recent you want suggested jobs to be.
 
-## v1.0 — Local App
+### Tech stack
 
-### What it does
-- **Kanban board** — drag and drop jobs across Wishlist → Applied → Interviewing → Offer → Rejected
-- **URL scraper** — paste any job posting URL and the app extracts the title, company, location, and full description automatically
-- **4-in-1 AI generation** — one click generates a tailored cover letter, resume bullets, interview prep questions, and a company brief using Google Gemini
-- **Notes** — per-job notes auto-saved on blur
-- **Master resume** — paste your resume once in Settings; it's used as context for every AI generation
-- **Local storage** — all data lives in `jobs.json` on your machine; nothing leaves your computer
-
-### Tech stack (v1)
-- **Frontend** — React + Vite, plain CSS, `@dnd-kit` for drag and drop
-- **Backend** — Node.js, Express, ES modules
-- **AI** — Google Gemini 2.0 Flash via `@google/generative-ai`
-- **Scraper** — axios + cheerio (supports LinkedIn, Indeed, and generic job boards)
-- **Storage** — `jobs.json` flat file (gitignored)
-
-### Quick start (v1)
-
-**Prerequisites:** Node.js 18+, a free [Gemini API key](https://aistudio.google.com/app/apikey)
-
-```bash
-# Clone the repo
-git clone https://github.com/nilesh0901/AI-Job-Finder.git
-cd AI-Job-Finder
-
-# Install all dependencies (root + backend + frontend)
-npm install
-cd backend && npm install
-cd ../frontend && npm install
-cd ..
-
-# Add your Gemini key
-echo "GEMINI_API_KEY=your_key_here" > backend/.env
-
-# Start both servers
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173) — the board is ready.
-
-> **Tip:** If AI generation returns a `"limit: 0"` error, your Google Cloud project has zero free-tier quota. Fix: go to [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → "Create API key in **new project**" — old projects often have quota zeroed.
-
-### v1 API reference
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/jobs` | Load all jobs |
-| POST | `/api/jobs` | Create job |
-| PATCH | `/api/jobs/:id` | Update status / notes / AI content |
-| DELETE | `/api/jobs/:id` | Delete job |
-| POST | `/api/scrape` | Scrape a job URL |
-| POST | `/api/ai/generate` | Generate AI content + persist |
-| GET | `/api/ai/test` | Test Gemini key |
-
----
-
-## v2.0 — Cloud App (In Progress)
-
-### What's new in v2
-- **Multi-user** — sign up with Google or email/password; each user's data is private and isolated
-- **Cloud database** — jobs, resumes, and AI content stored in Supabase Postgres; accessible from any device
-- **ATS resume generation** — Gemini generates an ATS-optimized resume tailored to each job description, stored with full version history
-- **PDF download** — download any ATS resume as a formatted PDF
-- **Mobile-responsive** — works on phone, tablet, and desktop
-- **Onboarding** — first-login wizard captures your field, experience, tech stack, and salary expectations to personalize AI output
-- **No setup required** — just open the URL and sign up
-
-### Tech stack (v2)
-- **Frontend** — React + Vite, mobile-first dark theme, deployed on **Vercel**
-- **Backend** — Python FastAPI + Uvicorn, deployed on **Railway**
-- **Database** — **Supabase** Postgres with Row-Level Security (per-user data isolation)
-- **Auth** — **Supabase Auth** — Google SSO + email/password, JWT sessions
-- **Storage** — **Supabase Storage** — PDF resumes stored per user/job/version
-- **AI** — Google Gemini 2.0 Flash (cover letters, bullets, interview prep, ATS resumes)
-- **Scraper** — Python httpx + BeautifulSoup4 (port of v1 scraper)
-- **PDF** — WeasyPrint (server-side PDF generation, no external service)
+- **Frontend** — React + Vite, Linear-inspired dark theme, `@dnd-kit` drag-and-drop, `react-diff-viewer-continued`; deployed on **Vercel**.
+- **Backend** — Python **FastAPI** + Uvicorn; deployed on **Railway**.
+- **Database / Auth / Storage** — **Supabase** (Postgres + RLS + Auth + Storage).
+- **AI** — **Groq** `llama-3.3-70b-versatile`.
+- **Scraper** — `httpx` + BeautifulSoup4.
+- **PDF** — WeasyPrint (server-side, no external service).
 
 ### Architecture
 
 ```
 Browser (React on Vercel)
-  ├─ supabase-js  →  Supabase (jobs CRUD, resume storage, auth)
-  └─ fetch('/api/*')  →  FastAPI on Railway
-                            ├─ POST /scrape
-                            ├─ POST /ai/generate
-                            ├─ POST /ai/ats-resume
-                            ├─ POST /resume/pdf
-                            └─ GET  /ai/test
+  ├─ supabase-js  →  Supabase Postgres + Auth + Storage   (all CRUD, RLS-protected)
+  └─ fetch(/api/*)  →  FastAPI on Railway                 (only secret-key / server-side work)
+                          ├─ POST /scrape
+                          ├─ POST /ai/generate
+                          ├─ POST /ai/ats-resume
+                          ├─ POST /ai/ats-score
+                          ├─ POST /resume/pdf
+                          ├─ POST /suggestions/refresh
+                          ├─ GET  /suggestions/status
+                          └─ GET  /ai/test
 ```
 
-### Free cloud services used
+CRUD (jobs, resumes, profiles, ATS versions, feedback) goes directly from the browser to Supabase. The FastAPI backend only handles work that needs a secret key or server-side fetch (AI, scraping, PDF generation, job suggestions).
 
-| Service | What it provides | Free limit |
+### Database schema
+
+| Table | Purpose |
+|---|---|
+| `user_profiles` | Onboarding answers — field, domain, experience, `tech_stack`, `custom_skills`, salary, `job_freshness_days` |
+| `jobs` | Kanban cards — status, details, `source`, `is_suggestion` |
+| `master_resumes` | One base resume per user |
+| `ats_resumes` | Versioned ATS resumes per job, with `master_resume_snapshot` |
+| `ats_resume_feedback` | Per-version rating (1–5), kept-changes flag, comments |
+
+All tables have RLS enabled with `auth.uid() = user_id` policies. Migrations live in [`supabase/migrations/`](supabase/migrations/) — run them in order in the Supabase SQL editor.
+
+### Local development
+
+**Backend** (`backend-py/`) — needs Python 3.11+:
+```bash
+cd backend-py
+python -m venv venv && .\venv\Scripts\activate      # Windows
+pip install -r requirements.txt
+# .env from Env_example: GROQ_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, FRONTEND_URL
+uvicorn main:app --reload --port 8000
+```
+
+**Frontend** (`frontend-v2/`) — needs Node 18+:
+```bash
+cd frontend-v2
+npm install
+# .env: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_BASE_URL
+npm run dev          # http://localhost:5174
+```
+In dev, the Vite proxy forwards `/api/*` → `localhost:8000`, so `VITE_API_BASE_URL` can be left blank.
+
+Quick reachability check (Groq + Supabase): `python test-connections.py` at the repo root.
+
+### Free services used
+
+| Service | Provides | Free limit |
 |---|---|---|
-| [Vercel](https://vercel.com) | React frontend hosting + CDN | Unlimited (Hobby) |
+| [Vercel](https://vercel.com) | Frontend hosting + CDN | Hobby tier |
 | [Railway](https://railway.app) | FastAPI backend hosting | $5/month credit |
 | [Supabase](https://supabase.com) | Postgres + Auth + Storage | 500 MB DB, 1 GB storage, 50K MAU |
-| [Google AI Studio](https://aistudio.google.com) | Gemini Flash API | Free tier |
+| [Groq](https://console.groq.com) | LLM inference | ~6K requests/day |
 
-### Database schema (v2)
+---
 
+## v1 — Local App
+
+A fully offline, single-user version. All data lives in `jobs.json` on your machine.
+
+### Features
+- Kanban board with drag-and-drop across the five statuses
+- URL scraper (og:meta → board-specific selectors → generic fallback)
+- 4-in-1 AI generation (cover letter, resume bullets, interview prep, company brief) via Google Gemini
+- Per-job notes, master resume context, results persisted locally
+
+### Tech stack
+- **Frontend** — React + Vite, plain CSS, `@dnd-kit`
+- **Backend** — Node.js + Express (ES modules)
+- **AI** — Google Gemini 2.0 Flash
+- **Storage** — `jobs.json` flat file (gitignored)
+
+### Quick start
+**Prerequisites:** Node 18+, a free [Gemini API key](https://aistudio.google.com/app/apikey).
+```bash
+git clone https://github.com/nilesh0901/AI-Job-Finder.git
+cd AI-Job-Finder
+npm install && cd backend && npm install && cd ../frontend && npm install && cd ..
+echo "GEMINI_API_KEY=your_key_here" > backend/.env
+npm run dev
 ```
-user_profiles   — field, experience, tech stack, salary (from onboarding)
-jobs            — Kanban job cards (one per user, RLS-protected)
-master_resumes  — user's base resume (one per user)
-ats_resumes     — generated ATS resumes (many per job, versioned)
-```
+Open [http://localhost:5173](http://localhost:5173).
 
-### v2 build phases
-
-| Phase | What gets built | Status |
-|---|---|---|
-| 1 — Provisioning | Supabase project, schema, auth providers, Railway + Vercel setup | ⬜ Pending |
-| 2 — FastAPI backend | `/scrape`, `/ai/generate`, `/ai/ats-resume`, `/resume/pdf`, `/ai/test` | ⬜ Pending |
-| 3 — React frontend | Fresh UI, auth, onboarding, responsive Kanban | ⬜ Pending |
-| 4 — ATS Resume | Gemini ATS prompt, PDF generation, version history | ⬜ Pending |
-| 5 — Deploy | Vercel + Railway live, GitHub tag v2.0.0 | ⬜ Pending |
+> **Tip:** If AI generation returns `"limit: 0"`, your Google Cloud project has zero free-tier quota. Fix at [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → "Create API key in **new project**".
 
 ---
 
 ## Roadmap
 
-| Version | Features |
-|---|---|
-| v2.1 | RemoteOK job connector — search and import jobs directly from the board |
-| v2.2 | Email digests, Google Calendar interview sync, application analytics |
-| v2.3 | AI fit scores, A/B cover letters, auto-rejection detection |
-| v2.4 | Browser extension, mobile PWA, shared boards |
-| v3.0 | Tiered plans + Stripe billing |
+| Version | Status | Features |
+|---|---|---|
+| v2.0 | ✅ Shipped | ATS score panel, diff view, star feedback, master-resume snapshot |
+| v2.1 | ✅ Shipped | Scraper hardening, onboarding upgrade, job suggestions agent + Suggested rail |
+| v2.2 | Planned | Email digests, Google Calendar interview sync, application analytics |
+| v2.3 | Planned | AI fit scores, A/B cover letters, auto-rejection detection |
+| v2.4 | Planned | Browser extension, mobile PWA, shared boards |
+| v3.0 | Planned | Tiered plans + Stripe billing |
 
 ---
 
@@ -160,18 +153,12 @@ ats_resumes     — generated ATS resumes (many per job, versioned)
 ```
 AI Job Finder/
 ├─ backend/             ← v1 Node.js + Express backend
-│   ├─ server.js
-│   ├─ scraper.js
-│   ├─ ai.js
-│   └─ package.json
 ├─ frontend/            ← v1 React + Vite frontend
-│   └─ src/
-├─ backend-py/          ← v2 FastAPI + Uvicorn backend (Python)
-├─ frontend-v2/         ← v2 React frontend (fresh, mobile-first)
-├─ supabase/
-│   └─ migrations/      ← SQL schema files
-├─ docs/                ← GitHub Pages landing page
-├─ v2-plan.md           ← detailed v2 build plan
+├─ backend-py/          ← v2 FastAPI backend (main.py, ai.py, scraper.py, suggestions.py, pdf.py)
+├─ frontend-v2/         ← v2 React frontend
+├─ supabase/migrations/ ← SQL schema (0001_init.sql, 0002_v2_1.sql)
+├─ TESTING_AGENT.md     ← automated QA test plan for the live app
+├─ v2-plan.md / v2.1-plan.md  ← build plans
 └─ README.md
 ```
 
@@ -179,19 +166,9 @@ AI Job Finder/
 
 ## About
 
-Built by [Nilesh Kumar](https://github.com/nilesh0901) as a tool to bring structure and AI leverage to the job search process.
+Built by [Nilesh Kumar](https://github.com/nilesh0901) to bring structure and AI leverage to the job search. Most job seekers are scattered across spreadsheets, browser tabs, and email threads — this app centralizes tracking, AI content generation, ATS-optimized resumes, and live job discovery in one place.
 
-The core idea: most job seekers are disorganized across spreadsheets, browser tabs, and email threads. This app centralizes everything — tracking, AI content generation, and now ATS-optimized resumes — so you spend less time on busywork and more time actually preparing.
-
-**Why FastAPI for v2?** The roadmap includes LangGraph agents, resume embeddings, and fit scoring — all Python-native. Choosing FastAPI now avoids a language migration later.
-
----
-
-## Contributing
-
-v2 is under active development. Issues and PRs welcome on [github.com/nilesh0901/AI-Job-Finder](https://github.com/nilesh0901/AI-Job-Finder).
-
----
+**Why FastAPI for v2?** The roadmap includes LangGraph agents, resume embeddings, and fit scoring — all Python-native — so FastAPI now avoids a language migration later.
 
 ## License
 
