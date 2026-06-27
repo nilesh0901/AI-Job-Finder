@@ -16,7 +16,7 @@ markdown report (see template below).
 **Live URL:** `https://your-app.vercel.app` ← replace with actual Vercel URL
 
 **Test account credentials:** use a dedicated test Google account (not Nilesh's personal account).
-If testing email/password, use: `test@example.com` / `TestPass123!` (create in Supabase Auth first).
+If testing email/password, use: `test@test.com` / `Test@1234` (create in Supabase Auth first).
 
 ---
 
