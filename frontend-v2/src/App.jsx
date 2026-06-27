@@ -10,33 +10,35 @@ import { getJobs, getUserProfile } from './api'
 
 export default function App() {
   const { session } = useAuth()
+  const userId = session?.user?.id   // depend on stable user id, NOT the whole session object
   const [jobs, setJobs]               = useState([])
   const [selectedJob, setSelectedJob] = useState(null)
   const [showAdd, setShowAdd]         = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [needsOnboarding, setNeedsOnboarding] = useState(false)
   const [loading, setLoading]         = useState(true)
+  const [loadError, setLoadError]     = useState('')
 
-  // Hooks must be called unconditionally on every render — guard inside.
-  useEffect(() => {
-    if (!session) {
-      setLoading(false)
-      return
-    }
+  async function loadData() {
+    if (!userId) { setLoading(false); return }
     setLoading(true)
-    async function load() {
-      try {
-        const [jobsData, profile] = await Promise.all([getJobs(), getUserProfile()])
-        setJobs(jobsData || [])
-        if (!profile || !profile.onboarding_done) setNeedsOnboarding(true)
-      } catch (e) {
-        console.error(e)
-      } finally {
-        setLoading(false)
-      }
+    setLoadError('')
+    try {
+      const [jobsData, profile] = await Promise.all([getJobs(), getUserProfile()])
+      setJobs(jobsData || [])
+      setNeedsOnboarding(!profile || !profile.onboarding_done)
+    } catch (e) {
+      console.error('Failed to load data:', e)
+      setLoadError(e?.message || 'Could not reach the server. Please try again.')
+    } finally {
+      setLoading(false)
     }
-    load()
-  }, [session])
+  }
+
+  // Hooks must be called unconditionally — guard inside.
+  // Deps on userId (stable string) NOT session (new object every token refresh) —
+  // prevents the splash flash every time the browser tab regains focus.
+  useEffect(() => { loadData() }, [userId])    // eslint-disable-line react-hooks/exhaustive-deps
 
   // Loading state — wait for auth to resolve
   if (session === undefined) {
@@ -52,6 +54,17 @@ export default function App() {
 
   if (loading) return (
     <div className="splash"><div className="splash-logo spinning">✦</div></div>
+  )
+
+  if (loadError) return (
+    <div className="splash">
+      <div className="splash-error">
+        <div className="splash-error-icon">⚠</div>
+        <h2>Couldn't load your data</h2>
+        <p className="splash-error-msg">{loadError}</p>
+        <button className="btn-primary" onClick={loadData}>Retry</button>
+      </div>
+    </div>
   )
 
   if (needsOnboarding) return (

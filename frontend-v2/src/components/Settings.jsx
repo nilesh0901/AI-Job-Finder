@@ -3,12 +3,20 @@ import { getMasterResume, saveMasterResume, getUserProfile, saveUserProfile } fr
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthProvider'
 
+// Coerce string/empty values to int|null before sending to Postgres int columns
+function toIntOrNull(v) {
+  if (v === '' || v === null || v === undefined) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.round(n) : null
+}
+
 export default function Settings({ onClose }) {
   const { user } = useAuth()
   const [resume, setResume]   = useState('')
   const [profile, setProfile] = useState({})
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState(false)
+  const [error, setError]     = useState('')
 
   useEffect(() => {
     getMasterResume().then(setResume).catch(() => {})
@@ -19,16 +27,24 @@ export default function Settings({ onClose }) {
 
   async function handleSave(e) {
     e.preventDefault()
-    setSaving(true); setSaved(false)
+    setSaving(true); setSaved(false); setError('')
     try {
+      const cleanProfile = {
+        ...profile,
+        years_experience:    toIntOrNull(profile.years_experience),
+        expected_salary_min: toIntOrNull(profile.expected_salary_min),
+        expected_salary_max: toIntOrNull(profile.expected_salary_max),
+        onboarding_done: true,
+      }
       await Promise.all([
         saveMasterResume(resume),
-        saveUserProfile({ ...profile, onboarding_done: true }),
+        saveUserProfile(cleanProfile),
       ])
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
-      console.error(err)
+      console.error('Settings save failed:', err)
+      setError(err?.message || 'Could not save changes. Try again.')
     } finally {
       setSaving(false)
     }
@@ -77,6 +93,8 @@ export default function Settings({ onClose }) {
             <textarea className="input textarea" rows={12} placeholder="Paste your full resume text here…"
               value={resume} onChange={e => setResume(e.target.value)} />
           </section>
+
+          {error && <p className="form-error">{error}</p>}
 
           <div className="modal-actions">
             <button type="button" className="btn-danger" onClick={handleSignOut}>Sign out</button>

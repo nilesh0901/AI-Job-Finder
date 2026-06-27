@@ -23,3 +23,9 @@ frontend-v2/.env.*.local
 frontend/src/assets/
 frontend/src/App.css
 frontend/public/icons.svg
+
+# Personal docs / resumes (never commit)
+*.docx
+*.pdf
+master_resume*.txt
+resume*.txt

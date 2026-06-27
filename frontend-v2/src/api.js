@@ -127,6 +127,12 @@ export async function scrapeJob(url) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
   })
+  // Even when the backend deliberately returns { success: false, error: "..." } it uses HTTP 200.
+  // A non-2xx here means the route itself is unreachable (CORS, 404, 500, Railway down).
+  if (!r.ok) {
+    const text = await r.text().catch(() => '')
+    throw new Error(`Scrape request failed (${r.status}): ${text.slice(0, 200) || 'no response body'}`)
+  }
   return r.json()
 }
 
