@@ -195,7 +195,7 @@ async def suggestions_refresh(body: SuggestionsRefreshRequest):
 @app.get("/suggestions/status")
 async def suggestions_status():
     """Health check for the suggestions agent."""
-    return {"status": "ok", "sources": ["RemoteOK", "Arbeitnow", "HackerNews"]}
+    return {"status": "ok", "sources": ["Adzuna", "Jooble", "RemoteOK", "Arbeitnow", "HackerNews"]}
 
 
 @app.post("/resume/pdf")

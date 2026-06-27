@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { saveUserProfile } from '../api'
 
-const STEPS = ['Field', 'Experience', 'Tech Stack', 'Salary', 'Job Alerts']
+const STEPS = ['Field', 'Location', 'Experience', 'Tech Stack', 'Salary', 'Job Alerts']
+// Countries with dedicated job-source coverage (Adzuna codes on the backend).
+const COUNTRIES = ['India','United States','United Kingdom','Canada','Australia','Germany','Singapore','Netherlands','France']
 const TECH_SUGGESTIONS = [
   'Python','JavaScript','TypeScript','Java','Go','C#','SQL','React','Node.js',
   'FastAPI','Django','Spring','PostgreSQL','MongoDB','Redis','Docker','Kubernetes',
@@ -42,6 +44,9 @@ export default function Onboarding({ onComplete }) {
     full_name: '',
     field: '',
     domain: '',
+    preferred_country: 'India',     // default audience is India
+    preferred_city: '',
+    open_to_remote: true,
     years_experience: null,         // int|null, never empty string
     tech_stack: [],
     custom_skills: [],              // free-text skills not in the preset list
@@ -118,8 +123,27 @@ export default function Onboarding({ onComplete }) {
           </div>
         )}
 
-        {/* Step 1 — Experience */}
+        {/* Step 1 — Location */}
         {step === 1 && (
+          <div className="onboard-step">
+            <h2>Where are you job hunting?</h2>
+            <p className="onboard-sub">We use this to surface jobs in your region (defaults to India).</p>
+            <select className="input" value={form.preferred_country}
+              onChange={e => set('preferred_country', e.target.value)}>
+              {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <input className="input" placeholder="City (optional, e.g. Bengaluru)"
+              value={form.preferred_city} onChange={e => set('preferred_city', e.target.value)} />
+            <label className="remote-toggle">
+              <input type="checkbox" checked={form.open_to_remote}
+                onChange={e => set('open_to_remote', e.target.checked)} />
+              <span>Also include worldwide remote jobs</span>
+            </label>
+          </div>
+        )}
+
+        {/* Step 2 — Experience */}
+        {step === 2 && (
           <div className="onboard-step">
             <h2>Years of experience?</h2>
             <p className="onboard-sub">Used to calibrate seniority in cover letters.</p>
@@ -136,8 +160,8 @@ export default function Onboarding({ onComplete }) {
           </div>
         )}
 
-        {/* Step 2 — Tech Stack */}
-        {step === 2 && (
+        {/* Step 3 — Tech Stack */}
+        {step === 3 && (
           <div className="onboard-step">
             <h2>Your tech stack</h2>
             <p className="onboard-sub">Select all that apply — these go into your resume bullets.</p>
@@ -178,8 +202,8 @@ export default function Onboarding({ onComplete }) {
           </div>
         )}
 
-        {/* Step 3 — Salary */}
-        {step === 3 && (
+        {/* Step 4 — Salary */}
+        {step === 4 && (
           <div className="onboard-step">
             <h2>Expected salary range</h2>
             <p className="onboard-sub">Optional — helps filter job fit later.</p>
@@ -202,8 +226,8 @@ export default function Onboarding({ onComplete }) {
           </div>
         )}
 
-        {/* Step 4 — Job Alerts / freshness */}
-        {step === 4 && (
+        {/* Step 5 — Job Alerts / freshness */}
+        {step === 5 && (
           <div className="onboard-step">
             <h2>How recent should suggested jobs be?</h2>
             <p className="onboard-sub">We'll only show you jobs posted within this window.</p>

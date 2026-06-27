@@ -285,6 +285,13 @@ a { color: var(--primary); text-decoration: none; }
 .freshness-label { font-size: 14px; font-weight: 600; color: var(--ink); }
 .freshness-desc  { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
 
+/* Open-to-remote checkbox row (onboarding location step + settings) */
+.remote-toggle {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; font-size: 14px; color: var(--ink-1); cursor: pointer;
+}
+.remote-toggle input { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+
 /* ── Modals ──────────────────────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.7);
