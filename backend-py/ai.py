@@ -229,6 +229,48 @@ Produce the tailored resume now."""
     return response.choices[0].message.content.strip()
 
 
+async def score_ats_resume(resume_text: str, job_description: str) -> dict:
+    """
+    Score an ATS resume against a job description.
+    Returns overall score, keyword/structure breakdown, matched/missing keywords, and tips.
+    """
+    prompt = f"""You are an ATS scoring engine. Analyze how well this resume matches the job description.
+
+JOB DESCRIPTION:
+{job_description[:3000]}
+
+RESUME:
+{resume_text[:3000]}
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "overall_score": <integer 0-100>,
+  "keyword_score": <integer 0-100>,
+  "structure_score": <integer 0-100>,
+  "keywords_found": ["keyword1", "keyword2"],
+  "keywords_missing": ["keyword1", "keyword2"],
+  "improvements": ["specific fix 1", "specific fix 2", "specific fix 3"]
+}}
+
+Scoring guide:
+- keyword_score: % of important JD keywords present in resume
+- structure_score: penalise for missing standard sections; reward clean ATS-friendly formatting
+- overall_score: weighted average (keyword 60%, structure 40%)"""
+
+    client = _get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": "Respond with valid JSON only."},
+            {"role": "user",   "content": prompt},
+        ],
+        max_tokens=1024,
+        temperature=0.2,
+        response_format={"type": "json_object"},
+    )
+    return json.loads(response.choices[0].message.content.strip())
+
+
 # ── Private helpers ───────────────────────────────────────────────────────────
 
 async def _call_groq(prompt: str) -> dict:

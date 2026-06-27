@@ -98,9 +98,8 @@ export async function getATSResumes(jobId) {
   return data
 }
 
-export async function saveATSResume(jobId, content, pdfUrl = null) {
+export async function saveATSResume(jobId, content, masterResumeSnapshot = '', pdfUrl = null) {
   const { data: { user } } = await supabase.auth.getUser()
-  // get next version number
   const { data: existing } = await supabase
     .from('ats_resumes')
     .select('version')
@@ -112,7 +111,14 @@ export async function saveATSResume(jobId, content, pdfUrl = null) {
 
   const { data, error } = await supabase
     .from('ats_resumes')
-    .insert({ user_id: user.id, job_id: jobId, content, pdf_url: pdfUrl, version: nextVersion })
+    .insert({
+      user_id: user.id,
+      job_id: jobId,
+      content,
+      pdf_url: pdfUrl,
+      version: nextVersion,
+      master_resume_snapshot: masterResumeSnapshot,
+    })
     .select()
     .single()
   if (error) throw error
@@ -164,4 +170,27 @@ export async function generateResumePDF({ resumeText, jobId, userId }) {
   })
   if (!r.ok) throw new Error(await r.text())
   return r.json()
+}
+
+export async function scoreATSResume({ resumeText, jobDescription }) {
+  const r = await fetch(`${API}/ai/ats-score`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resumeText, jobDescription }),
+  })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
+export async function saveATSFeedback({ atsResumeId, jobId, rating, keptChanges, comments }) {
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await supabase.from('ats_resume_feedback').insert({
+    user_id: user.id,
+    ats_resume_id: atsResumeId,
+    job_id: jobId,
+    rating,
+    kept_changes: keptChanges,
+    comments,
+  })
+  if (error) throw error
 }

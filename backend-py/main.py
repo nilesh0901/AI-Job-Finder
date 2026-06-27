@@ -26,7 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 
 from scraper import scrape_job
-from ai import generate_ai_content, generate_ats_resume, test_connection
+from ai import generate_ai_content, generate_ats_resume, score_ats_resume, test_connection
 from pdf import resume_to_pdf
 
 
@@ -80,6 +80,10 @@ class ATSResumeRequest(BaseModel):
     jobDescription: str
     masterResume: str | None = ""
     userProfile: dict | None = None
+
+class ATSScoreRequest(BaseModel):
+    resumeText: str
+    jobDescription: str
 
 class PDFRequest(BaseModel):
     resumeText: str
@@ -154,6 +158,18 @@ async def ai_ats_resume(req: ATSResumeRequest):
             user_profile=req.userProfile,
         )
         return {"resumeText": resume_text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ai/ats-score")
+async def ai_ats_score(req: ATSScoreRequest):
+    """Score a tailored ATS resume against the job description."""
+    if not req.resumeText or not req.jobDescription:
+        raise HTTPException(status_code=400, detail="resumeText and jobDescription are required")
+    try:
+        result = await score_ats_resume(req.resumeText, req.jobDescription)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
