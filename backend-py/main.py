@@ -28,6 +28,7 @@ from pydantic import BaseModel, HttpUrl
 from scraper import scrape_job
 from ai import generate_ai_content, generate_ats_resume, score_ats_resume, test_connection
 from pdf import resume_to_pdf
+from suggestions import refresh_suggestions
 
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -89,6 +90,9 @@ class PDFRequest(BaseModel):
     resumeText: str
     jobId: str
     userId: str
+
+class SuggestionsRefreshRequest(BaseModel):
+    user_id: str
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -172,6 +176,26 @@ async def ai_ats_score(req: ATSScoreRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/suggestions/refresh")
+async def suggestions_refresh(body: SuggestionsRefreshRequest):
+    """
+    Fetch and insert job suggestions for a user (RemoteOK / Arbeitnow / HackerNews).
+    Runs server-side with the service-role key; bypasses RLS to insert into the
+    user's board with is_suggestion=true.
+    """
+    try:
+        result = await refresh_suggestions(body.user_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/suggestions/status")
+async def suggestions_status():
+    """Health check for the suggestions agent."""
+    return {"status": "ok", "sources": ["RemoteOK", "Arbeitnow", "HackerNews"]}
 
 
 @app.post("/resume/pdf")

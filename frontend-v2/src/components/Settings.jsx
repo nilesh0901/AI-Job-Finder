@@ -17,6 +17,7 @@ export default function Settings({ onClose }) {
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState(false)
   const [error, setError]     = useState('')
+  const [customSkillInput, setCustomSkillInput] = useState('')
 
   useEffect(() => {
     getMasterResume().then(setResume).catch(() => {})
@@ -24,6 +25,18 @@ export default function Settings({ onClose }) {
   }, [])
 
   function setP(k, v) { setProfile(p => ({ ...p, [k]: v })) }
+
+  function addCustomSkill() {
+    const s = customSkillInput.trim()
+    const current = profile.custom_skills || []
+    if (!s || current.includes(s)) { setCustomSkillInput(''); return }
+    setP('custom_skills', [...current, s])
+    setCustomSkillInput('')
+  }
+
+  function removeCustomSkill(skill) {
+    setP('custom_skills', (profile.custom_skills || []).filter(s => s !== skill))
+  }
 
   async function handleSave(e) {
     e.preventDefault()
@@ -84,6 +97,41 @@ export default function Settings({ onClose }) {
             <input className="input" type="number" placeholder="Years of experience"
               value={profile.years_experience || ''}
               onChange={e => setP('years_experience', e.target.value)} />
+
+            <label className="settings-label" style={{ marginTop: 8 }}>Custom skills</label>
+            <div className="custom-skill-row">
+              <input className="input onboard-input" type="text" placeholder="Add other skill…"
+                value={customSkillInput}
+                onChange={e => setCustomSkillInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomSkill() } }} />
+              <button type="button" className="btn-ghost" onClick={addCustomSkill}>+ Add</button>
+            </div>
+            {(profile.custom_skills || []).length > 0 && (
+              <div className="tech-grid" style={{ marginTop: 10 }}>
+                {(profile.custom_skills || []).map(skill => (
+                  <button key={skill} type="button" className="tech-chip active"
+                    onClick={() => removeCustomSkill(skill)}>
+                    {skill} ✕
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <label className="settings-label" style={{ marginTop: 8 }}>Suggested-job freshness</label>
+            <div className="freshness-options">
+              {[
+                { days: 1,  label: 'Last 24 hours', desc: 'Only the freshest postings' },
+                { days: 7,  label: 'Last 7 days',   desc: 'Best balance of volume + recency' },
+                { days: 15, label: 'Last 15 days',  desc: 'Wider net, more options' },
+              ].map(opt => (
+                <button key={opt.days} type="button"
+                  className={`freshness-card ${(profile.job_freshness_days || 7) === opt.days ? 'selected' : ''}`}
+                  onClick={() => setP('job_freshness_days', opt.days)}>
+                  <span className="freshness-label">{opt.label}</span>
+                  <span className="freshness-desc">{opt.desc}</span>
+                </button>
+              ))}
+            </div>
           </section>
 
           {/* Master Resume */}

@@ -170,6 +170,22 @@ a { color: var(--primary); text-decoration: none; }
   color: var(--primary); padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
 }
 
+/* ── v2.1: Suggested rail ────────────────────────────────────────────── */
+.column-suggested {
+  border: 1.5px dashed var(--border);
+  background: rgba(94, 106, 210, 0.04);
+}
+.column-suggested .column-label { color: var(--primary); font-weight: 600; }
+
+.suggestion-card    { border-left: 3px solid var(--primary); }
+.job-card-source    { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+
+.suggestions-empty  { text-align: center; padding: 24px 12px; color: var(--ink-2); font-size: 14px; }
+.suggestions-empty p { margin-bottom: 12px; }
+
+.btn-refresh         { font-size: 16px; padding: 2px 8px; flex-shrink: 0; }
+.btn-refresh-mobile  { width: 100%; margin-bottom: 10px; }
+
 /* ── Mobile tabs (hidden on desktop) ─────────────────────────────────── */
 .mobile-tabs { display: none; }
 .mobile-column-view { display: none; }
@@ -252,6 +268,22 @@ a { color: var(--primary); text-decoration: none; }
 
 .salary-row  { display: flex; align-items: center; gap: 8px; }
 .salary-dash { color: var(--ink-3); }
+
+/* ── v2.1: custom skills + job freshness ─────────────────────────────── */
+.custom-skill-row { display: flex; gap: 8px; margin-top: 12px; }
+.custom-skill-row .onboard-input { flex: 1; }
+
+.freshness-options { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.freshness-card {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 12px 16px; border-radius: var(--r-lg);
+  background: var(--surface-2); border: 1.5px solid var(--border);
+  cursor: pointer; text-align: left; transition: border-color var(--transition);
+}
+.freshness-card:hover { border-color: var(--primary); }
+.freshness-card.selected { border-color: var(--primary); background: rgba(94,106,210,.12); }
+.freshness-label { font-size: 14px; font-weight: 600; color: var(--ink); }
+.freshness-desc  { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
 
 /* ── Modals ──────────────────────────────────────────────────────────── */
 .modal-backdrop {

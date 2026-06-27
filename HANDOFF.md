@@ -1,172 +1,143 @@
-# AI Job Finder — Session Handoff Report
-**Date:** 2026-06-27  
-**Session:** v1.0 → v2.0 planning + v1.2 backend groundwork  
-**Status:** FastAPI backend complete and locally verified ✅
+# AI Job Finder — Session Handoff
+**Last updated:** 2026-06-27  
+**Current version:** v2.1 ✅ Shipped → v2.2 planning
 
 ---
 
-## What Was Done This Session
+## Quick Status
 
-### 1. Stack Decision (Finalized)
-Evaluated three options and settled on the right stack for the goals:
-
-| Rejected | Reason |
-|---|---|
-| Streamlit | Not production-grade, no drag-drop UI, no proper Google SSO |
-| Node.js + Express (v1 continuation) | Can't support future Python ML/AI features |
-
-**Chosen stack:**
-- **Frontend:** React (fresh, mobile-first) → hosted on Vercel
-- **Backend:** FastAPI + Uvicorn (Python) → hosted on Railway
-- **Database + Auth + Storage:** Supabase (Postgres + RLS + Auth + File Storage)
-- **AI:** Groq — `llama-3.3-70b-versatile` (free, fast, 6K req/day)
-- **PDF generation:** WeasyPrint (server-side, no external service)
+| Layer | Status | Notes |
+|---|---|---|
+| Supabase schema | ✅ Live | All tables + RLS deployed |
+| FastAPI backend | ✅ Live on Railway | 8 routes, Groq AI, WeasyPrint PDF |
+| React frontend | ✅ Live on Vercel | Kanban, mobile, auth, ATS tab |
+| v2.0 ATS features | ✅ Shipped | Score dial, diff view, star feedback |
+| v2.1 suggestions | ✅ Shipped | Scraper fix, onboarding upgrade, suggestions agent + UI |
 
 ---
 
-### 2. Plan Saved
-Full v2 build plan written to `v2-plan.md` covering:
-- 5 build phases with time estimates
-- Complete DB schema (4 tables with RLS)
-- Folder structure
-- Verification checkpoints per phase
-- Roadmap through v2.4 and v3.0
+## v2.0 — What's Shipped (Do Not Touch)
+
+### Supabase tables (all with RLS)
+- `user_profiles` — onboarding answers (field, domain, tech_stack, years_experience, salary, currency)
+- `jobs` — Kanban cards per user (status: wishlist / applied / interviewing / offer / rejected)
+- `master_resumes` — one per user, stored as text
+- `ats_resumes` — versioned per job; has `master_resume_snapshot text` column for accurate diff
+- `ats_resume_feedback` — rating (1–5), kept_changes bool, comments text
+
+### Backend routes (`backend-py/main.py`)
+```
+GET  /health
+GET  /ai/test
+POST /scrape
+POST /ai/generate       → cover letter + bullets + interview prep + company brief
+POST /ai/ats-resume     → surgical ATS tailored resume text
+POST /ai/ats-score      → keyword/structure score breakdown
+POST /resume/pdf        → WeasyPrint PDF → Supabase Storage → download URL
+```
+
+### Frontend (`frontend-v2/`)
+- `src/App.jsx` — auth gate (splash → login → onboarding → board); **all hooks above conditional returns**; `useEffect` depends on `session?.user?.id` (not `session`)
+- `src/api.js` — CRUD via supabase-js; AI/scrape/PDF via fetch to FastAPI
+- `src/components/Board.jsx` — 5-column Kanban desktop + mobile tab view
+- `src/components/JobDetailModal.jsx` — 5 AI tabs; ATS tab has generate, score, diff, feedback, PDF
+- `src/components/AuthProvider.jsx` — Supabase auth state listener
+- `src/components/Onboarding.jsx` — multi-step wizard
+- `src/lib/supabase.js` — anon client singleton
+- `src/index.css` — Linear dark design system
+
+### Recurring bug patterns to avoid
+- `toIntOrNull()` before any int upsert — empty string → Postgres `22P02` crash
+- `useEffect` depending on `session` object causes reload loops on every tab switch → use `session?.user?.id`
+- All hooks must be called **above** any conditional `return` in App.jsx
 
 ---
 
-### 3. README.md Written
-Comprehensive `README.md` at repo root covering:
-- v1 (local) — quick start, API reference, tech stack
-- v2 (cloud) — what's new, architecture diagram, DB schema, build phases
-- Roadmap v2.1 → v3.0
-- Free cloud services table with limits
-- About section (Nilesh's background and motivation)
+## v2.1 — Tasks to Implement
+
+Plan is in `v2.1-plan.md` (root of repo). Hand it to VS Code Claude Code with:
+> "Read v2.1-plan.md and implement all tasks in order A → G. Do not touch v1 files."
+
+### Task order (strict — B's migration must run before D/E/F)
+
+| Task | File(s) | Status |
+|---|---|---|
+| **A** — Fix URL scraper | `backend-py/scraper.py`, `main.py` | ✅ Done |
+| **B** — Upgrade onboarding + migration | `Onboarding.jsx`, `Settings.jsx`, `supabase/migrations/0002_v2_1.sql` | ✅ Done |
+| **C** — Verify migration ran | Supabase dashboard SQL editor | ✅ Done |
+| **D** — Suggestions agent | `backend-py/suggestions.py` (new file) | ✅ Done |
+| **E** — Suggestions API endpoints | `backend-py/main.py`, `frontend-v2/src/api.js` | ✅ Done |
+| **F** — Suggestions Rail UI | `frontend-v2/src/components/Board.jsx`, `index.css` | ✅ Done |
+| **G** — Testing agent doc | `TESTING_AGENT.md` (new file at root) | ✅ Done |
+
+### New Supabase columns (migration 0002 adds these)
+```sql
+user_profiles.custom_skills   text[]  DEFAULT '{}'
+user_profiles.job_freshness_days  int DEFAULT 7  CHECK IN (1,7,15)
+jobs.source                   text    DEFAULT 'manual'
+jobs.is_suggestion            boolean DEFAULT false
+```
+Run the migration SQL in Supabase dashboard → SQL editor before starting task D.
+
+### New API endpoints (task E)
+```
+POST /suggestions/refresh   → body: { user_id }  → { inserted, sources }
+GET  /suggestions/status    → { status: "ok", sources: [...] }
+```
+
+### New frontend function (task E)
+```js
+// src/api.js
+export async function refreshSuggestions(userId) { ... }
+```
+
+### Suggestions column CSS class names (task F)
+`.column-suggested`, `.suggestion-card`, `.job-card-source`, `.job-card-link`, `.suggestions-empty`, `.btn-refresh`
 
 ---
 
-### 4. Supabase — Phase 1 ✅ COMPLETE
-- Project created at `https://eoudzvwbrrqnhtulehfc.supabase.co`
-- Schema deployed — all 4 tables live with Row-Level Security:
-  - `user_profiles` — onboarding data (field, experience, tech stack, salary)
-  - `jobs` — Kanban job cards, per-user
-  - `master_resumes` — user's base resume
-  - `ats_resumes` — generated ATS resumes with version history
-- **Email/password auth:** ✅ enabled
-- **Google SSO:** ✅ enabled and configured
-- **Sign-up API:** ✅ verified accepting registrations
-- Connection test script: `test-connections.py` (run `python test-connections.py`)
+## Deployment Config (do not change without reason)
+
+### Railway (backend)
+- Root directory: `backend-py/`
+- Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT` (set in `railway.toml`)
+- Required env vars: `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FRONTEND_URL`
+- `FRONTEND_URL` must equal the Vercel URL exactly (with `https://`, no trailing slash)
+
+### Vercel (frontend)
+- Root: `frontend-v2/`
+- `VITE_API_BASE_URL` must start with `https://` — without it, POSTs go to Vercel → 405
+- Rebuild required after any env var change (Vite bakes vars at build time)
+
+### Supabase Auth
+- Site URL + Redirect URLs must include Vercel URL with `/**` wildcard
+- Google OAuth app must be **Published** (not Testing) for all users to sign in
 
 ---
 
-### 5. FastAPI Backend — Phase 2 ✅ COMPLETE
-All files written to `backend-py/`:
+## Pending User Action
+
+- [ ] **Publish Google OAuth app**: Google Cloud Console → APIs & Services → OAuth consent screen → **Publish App**
+  - Changes status from Testing → Production
+  - All Google accounts can sign in without approval
+  - Zero impact on Railway/Supabase/Vercel free tier costs
+
+---
+
+## Key Files Reference
 
 | File | Purpose |
 |---|---|
-| `main.py` | FastAPI app, all 6 routes, CORS, lifespan |
-| `scraper.py` | Job URL scraper — httpx + BeautifulSoup4, supports LinkedIn/Indeed/generic |
-| `ai.py` | Groq AI generation — cover letter, bullets, interview prep, ATS resume |
-| `pdf.py` | WeasyPrint PDF generation from ATS resume text |
-| `requirements.txt` | All Python dependencies (pinned versions) |
-| `Procfile` | Railway start command: `uvicorn main:app --host 0.0.0.0 --port $PORT` |
-| `.env` | Local secrets (gitignored) — needs GROQ_API_KEY filled in |
-| `.env.example` / `Env_example` | Template for env vars |
-| `.gitignore` | Ignores venv/, __pycache__, .env |
-
-**API endpoints built:**
-```
-GET  /health          — Railway health check
-GET  /ai/test         — Verify Groq API key
-POST /scrape          — Extract job data from URL
-POST /ai/generate     — Cover letter + bullets + interview prep + company brief
-POST /ai/ats-resume   — Full ATS-optimized resume text
-POST /resume/pdf      — ATS resume → PDF → Supabase Storage → download URL
-```
-
-**Local verification:**
-- `pip install -r requirements.txt` ✅ all packages installed
-- `uvicorn main:app --reload --port 8000` ✅ server starts clean
-- Interactive docs at `http://localhost:8000/docs` ✅
-
-**AI switch mid-session:** Switched from Google Gemini to Groq (`llama-3.3-70b-versatile`) because Gemini key validation was painful. Groq is faster, free tier is cleaner (6K req/day), and uses JSON mode for reliable structured output.
-
-**Windows fix applied:** Removed `lxml` from requirements (needs C++ compiler on Windows) → switched to Python's built-in `html.parser` in BeautifulSoup. Same parse quality for our use case.
+| `v2.1-plan.md` | Full v2.1 implementation spec (hand to VS Code extension) |
+| `TESTING_AGENT.md` | QA prompt for automated site testing (created by task G) |
+| `test-connections.py` | Quick Groq + Supabase smoke test |
+| `backend-py/.env` | Local secrets — never commit, never paste in chat |
+| `supabase/migrations/0001_init.sql` | v2.0 schema source of truth |
+| `supabase/migrations/0002_v2_1.sql` | v2.1 migration (created by task B) |
+| `setup-venv.bat` | Windows: create venv + install deps |
+| `master_resume.txt` | Nilesh's personal resume text — NOT linked to app; each user stores their own in Supabase |
 
 ---
 
-### 6. Tooling Created
-- `setup-venv.bat` — double-click to create venv + install packages + run connection test
-- `test-connections.py` — verifies Supabase tables, auth, and sign-up API end-to-end
-
----
-
-## What's Pending
-
-### Immediate (before next session starts)
-- [ ] Get Groq API key from [console.groq.com](https://console.groq.com) → paste into `backend-py/.env`
-- [ ] Run `GET /ai/test` → confirm `{"ok": true}`
-- [ ] Set Railway root directory to `backend-py`, start command to `uvicorn main:app --host 0.0.0.0 --port $PORT`
-
-### Phase 3 — React Frontend (next session)
-Fresh React app in `frontend-v2/`:
-- Supabase Auth (Google SSO + email/password login screen)
-- Onboarding wizard (field → experience → tech stack → salary)
-- Responsive Kanban board (mobile collapses to tab view)
-- `api.js` rewritten to use supabase-js for CRUD + fetch for AI endpoints
-- Mobile-first CSS, same Linear dark design language as v1
-
-### Phase 4 — ATS Resume UI
-- "Generate ATS Resume" button in job detail modal
-- Resume version history (v1, v2, v3 per job)
-- PDF download button → calls `/resume/pdf` → returns Supabase Storage URL
-- Create `resumes` bucket in Supabase Storage (public read, authenticated write)
-
-### Phase 5 — Deploy
-- Railway: deploy `backend-py/` → get public URL
-- Vercel: deploy `frontend-v2/` → set `VITE_API_BASE_URL` to Railway URL
-- GitHub: merge `feature/v2-cloud` → master → tag `v2.0.0`
-- GitHub Pages: `docs/index.html` landing page
-
----
-
-## Environment Variables Reference
-
-### `backend-py/.env` (local, gitignored)
-```
-GROQ_API_KEY=gsk_...                    ← get from console.groq.com
-SUPABASE_URL=https://eoudzvwbrrqnhtulehfc.supabase.co
-SUPABASE_ANON_KEY=eyJhbG...             ← Supabase → Project Settings → API → anon key
-SUPABASE_SERVICE_ROLE_KEY=eyJhbG...     ← Supabase → Project Settings → API → service_role key
-FRONTEND_URL=https://your-app.vercel.app
-PORT=8000
-```
-
-### Railway environment (set in Railway dashboard)
-Same variables as above — copy paste from `.env` into Railway → Variables tab.
-
-### Vercel environment (set in Vercel dashboard)
-```
-VITE_SUPABASE_URL=https://eoudzvwbrrqnhtulehfc.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbG...
-VITE_API_BASE_URL=https://your-app.up.railway.app
-```
-
----
-
-## Key Decisions Made
-| Decision | Choice | Reason |
-|---|---|---|
-| Frontend | React (fresh) | Mobile-first rebuild, Kanban UI, Vercel-native |
-| Backend | FastAPI + Uvicorn | Python for future ML, async, auto-docs |
-| Database | Supabase Postgres | SQL + RLS + Auth + Storage in one free project |
-| Auth | Supabase Auth | Google SSO + email/password, 50K MAU free |
-| AI | Groq llama-3.3-70b | Fast, free, JSON mode, reliable |
-| PDF | WeasyPrint | No external service, pure Python |
-| Frontend host | Vercel | Best free React hosting, no cold starts |
-| Backend host | Railway | $5/month free credit, no sleep on free tier |
-
----
-
-## Repo
-GitHub: [nilesh0901/AI-Job-Finder](https://github.com/nilesh0901/AI-Job-Finder)  
-Branch strategy: `master` = stable, `feature/v2-cloud` = v2 in-progress
+## Groq Model
+`llama-3.3-70b-versatile` — free tier ~6K req/day. If quota hits, check [console.groq.com](https://console.groq.com).

@@ -6,7 +6,7 @@ import Board from './components/Board'
 import AddJobModal from './components/AddJobModal'
 import JobDetailModal from './components/JobDetailModal'
 import Settings from './components/Settings'
-import { getJobs, getUserProfile } from './api'
+import { getJobs, getUserProfile, refreshSuggestions } from './api'
 
 export default function App() {
   const { session } = useAuth()
@@ -68,8 +68,18 @@ export default function App() {
   )
 
   if (needsOnboarding) return (
-    <Onboarding onComplete={() => setNeedsOnboarding(false)} />
+    <Onboarding onComplete={() => {
+      setNeedsOnboarding(false)
+      // Seed the board with suggestions in the background — don't block the UI.
+      if (userId) refreshSuggestions(userId).then(loadData).catch(console.error)
+    }} />
   )
+
+  async function handleRefreshSuggestions() {
+    if (!userId) return
+    await refreshSuggestions(userId)
+    await loadData()
+  }
 
   function handleJobUpdated(updated) {
     setJobs(prev => prev.map(j => j.id === updated.id ? updated : j))
@@ -107,6 +117,7 @@ export default function App() {
           jobs={jobs}
           onJobClick={setSelectedJob}
           onJobUpdated={handleJobUpdated}
+          onRefreshSuggestions={handleRefreshSuggestions}
         />
       </main>
 
