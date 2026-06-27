@@ -37,9 +37,9 @@ Frontend (`frontend-v2/`):
 ```
 cd frontend-v2
 npm install
-npm run dev               # Vite on :5173
+npm run dev               # Vite on :5174 (set in vite.config.js)
 ```
-Reads `frontend-v2/.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_BASE_URL` (e.g. `http://localhost:8000`).
+Reads `frontend-v2/.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_BASE_URL` (e.g. `http://localhost:8000`). For local dev the Vite proxy in `vite.config.js` forwards `/api/*` → `localhost:8000` (and strips the `/api` prefix), so `VITE_API_BASE_URL` can be left blank and `api.js` will use the relative `/api` fallback.
 
 Quick connection smoke test (Groq + Supabase reachable): `python test-connections.py` at repo root.
 
@@ -57,30 +57,52 @@ Quick connection smoke test (Groq + Supabase reachable): `python test-connection
 Three pieces, hosted separately:
 
 - **`backend-py/`** — FastAPI on :8000.
-  - `main.py` — all routes: `GET /health`, `GET /ai/test`, `POST /scrape`, `POST /ai/generate`, `POST /ai/ats-resume`, `POST /resume/pdf`. CORS allowlist includes `http://localhost:5173` and `FRONTEND_URL` env.
-  - `ai.py` — Groq client (`llama-3.3-70b-versatile`), `@lru_cache` on the client init. Exposes `generate_ai_content`, `generate_ats_resume`, `test_connection`.
+  - `main.py` — all routes: `GET /health`, `GET /ai/test`, `POST /scrape`, `POST /ai/generate`, `POST /ai/ats-resume`, `POST /ai/ats-score`, `POST /resume/pdf`. CORS allowlist: `http://localhost:5173`, `http://localhost:5174`, `http://localhost:3000`, plus `os.getenv("FRONTEND_URL", "")` and `allow_origin_regex=r"https://.*\.vercel\.app"` for preview deployments — the Vercel URL **must** be set in Railway env vars or production calls fail the preflight (see "Deployment gotchas" below).
+  - `ai.py` — Groq client (`llama-3.3-70b-versatile`), `@lru_cache` on the client init. Exposes `generate_ai_content`, `generate_ats_resume`, `score_ats_resume`, `test_connection`.
+  - `railway.toml` — forces nixpacks builder and `uvicorn main:app --host 0.0.0.0 --port $PORT` start command. Required because Railway's cached `railpack-plan.json` otherwise wins and runs `node server.js` instead of uvicorn.
   - `scraper.py` — Python equivalent of v1's scraper (httpx + BeautifulSoup4).
   - `pdf.py` — `resume_to_pdf(text)` → bytes via **WeasyPrint**. Uploaded to Supabase Storage bucket `resumes` at `{user_id}/{job_id}/{uuid}.pdf` using the service-role key.
   - `Procfile` — Railway deployment hint.
 
-- **`frontend-v2/`** — React + Vite + Supabase JS SDK.
+- **`frontend-v2/`** — React + Vite + Supabase JS SDK. Notable deps: `@dnd-kit/core` + `@dnd-kit/sortable` (Kanban drag), `react-diff-viewer-continued` (ATS resume side-by-side diff).
   - `src/lib/supabase.js` — anon client singleton.
   - `src/components/AuthProvider.jsx` — wraps `supabase.auth.onAuthStateChange`; provides `{ session, user }` via context. `session === undefined` means "auth is still resolving"; `null` means signed out; object means signed in.
-  - `src/App.jsx` — gates rendering on `session` (splash → `<Login>` → `<Onboarding>` → `<Board>`). **All hooks must be called above any conditional `return`** — historical bug where `useEffect` after early returns caused a blank screen after login; if you see hook-order issues, fix this first.
-  - `src/api.js` — **CRUD (jobs / master_resumes / user_profiles / ats_resumes) goes directly to Supabase via supabase-js**, not through FastAPI. Only `scrape` / `ai/generate` / `ai/ats-resume` / `resume/pdf` hit the FastAPI backend.
+  - `src/App.jsx` — gates rendering on `session` (splash → `<Login>` → `<Onboarding>` → `<Board>`). **All hooks must be called above any conditional `return`** — historical bug where `useEffect` after early returns caused a blank screen after login; if you see hook-order issues, fix this first. **Also: any `useEffect` that triggers a data load must depend on `session?.user?.id` (a stable string), not `session` (a fresh object). Supabase mints a new session object on every token refresh and tab-visibility change — depending on `session` causes data reloads and splash flashes on every tab switch.**
+  - `src/api.js` — **CRUD (jobs / master_resumes / user_profiles / ats_resumes / ats_resume_feedback) goes directly to Supabase via supabase-js**, not through FastAPI. Only `scrape` / `ai/generate` / `ai/ats-resume` / `ai/ats-score` / `resume/pdf` hit the FastAPI backend. `scrapeJob()` throws on non-2xx; the other AI calls throw on `!r.ok` with the response text — propagate these to a visible UI error, never swallow. `saveATSResume` takes a `masterResumeSnapshot` param (3rd arg) — always pass the current master resume so the diff view is accurate for that version.
   - `src/index.css` — same Linear-dark design system as v1 (canvas `#010102`, surfaces 1–4, accent `--primary: #5e6ad2` used scarcely).
   - `.env` is **committed** (anon key only) and read at Vite build time — do not move secrets here. Service-role key lives in `backend-py/.env` only.
 
 - **`supabase/migrations/0001_init.sql`** — schema source of truth.
-  - Tables: `user_profiles` (onboarding answers), `jobs` (the Kanban cards), `master_resumes` (one per user), `ats_resumes` (versioned, tied to a job).
+  - Tables: `user_profiles` (onboarding answers), `jobs` (the Kanban cards), `master_resumes` (one per user), `ats_resumes` (versioned, tied to a job), `ats_resume_feedback` (star ratings per ATS version).
+  - `ats_resumes` has a `master_resume_snapshot text` column (added in Version2.0 — run `alter table ats_resumes add column if not exists master_resume_snapshot text` if not already applied). Stores the exact master resume used at generation time so the diff view stays accurate even after the master is edited.
+  - `ats_resume_feedback` — `rating smallint` (1–5), `kept_changes boolean`, `comments text`; RLS `using (auth.uid() = user_id)`.
   - **All tables have RLS enabled with `using (auth.uid() = user_id)` policies** — the browser talks to Postgres directly, so a buggy frontend physically cannot leak data across users.
   - Status check constraint on `jobs.status`: `wishlist | applied | interviewing | offer | rejected`.
   - Indexes: `jobs(user_id, status, added_at desc)`, `ats_resumes(job_id, version desc)`.
 
+### v2 shipped features
+- **ATS resume tab** (`JobDetailModal.jsx` → tab 4, Version2.0): Final/Diff toggle, `◎ ATS Score` button, star feedback widget (1–5 + kept-changes + comment), version history. ReactDiffViewer wrapped in `.ats-diff-scroll` (max-height 520px, scrollable) — don't revert to `overflow: hidden` on the parent.
+- **ATS Score panel**: calls `POST /ai/ats-score` → `score_ats_resume()` in `ai.py`. Returns `overall_score`, `keyword_score`, `structure_score`, `keywords_found`, `keywords_missing`, `improvements`. Displayed as a dial + breakdown chips + fix tips.
+- **master_resume_snapshot**: stored per ATS version in `ats_resumes.master_resume_snapshot`. Diff view uses this as `oldValue`; falls back to current `masterResume` state for older rows that lack it.
+
 ### v2 known gaps (in active build)
-- `jobs.source` column does not exist yet. SuggestionsRail (v1.4) will add it via a follow-up migration. Until then, source provenance is stashed in `jobs.notes` as text like `"Source: LinkedIn"`.
-- No SuggestionsRail UI yet — empty board shows zero suggestions; v1.4 plan covers fan-out across Indeed (MCP) / ZipRecruiter (MCP) / RemoteOK / HN / web search.
-- ATS resume diff modal (the side-by-side view) is planned but not implemented; `generateATSResume` already returns the rewritten text.
+- `jobs.source` column does not exist yet. SuggestionsRail will add it via a follow-up migration. Until then, source provenance is stashed in `jobs.notes` as text like `"Source: LinkedIn"`.
+- No SuggestionsRail UI yet — empty board shows zero suggestions. Plan covers fan-out across Indeed (MCP) / ZipRecruiter (MCP) / RemoteOK / HN / web search. New-user post-onboarding wishlist auto-seeding (based on `user_profiles.field` + `tech_stack` + salary) is pending.
+
+## Deployment gotchas (v2)
+
+Two prod-only misconfigs we've hit more than once — check these first when something works locally but fails on Vercel:
+
+- **`VITE_API_BASE_URL` on Vercel must start with `https://`.** Without the protocol, the browser treats it as a relative path and POSTs `/ai/generate` to the Vercel domain → Vercel returns **405 Method Not Allowed**. Set it to the full `https://your-app.up.railway.app` (no trailing slash). Vite bakes env vars at **build time**, so after editing → **Redeploy** from the Vercel dashboard; just saving the env var won't propagate.
+- **`FRONTEND_URL` on Railway must equal the Vercel URL** (with `https://`, no trailing slash). It feeds the CORS allowlist in `main.py`. Missing/wrong value → CORS preflight rejection → browser console shows **"Failed to fetch"** with no body. Note: Supabase calls keep working in this state because they go to Supabase, not Railway — so a half-broken board (auth + CRUD fine, AI buttons dead) is the signature of a Railway CORS misconfig.
+- **Supabase Auth → URL Configuration**: Site URL and Redirect URLs must include the Vercel URL (with `/**` wildcards). Otherwise Google SSO completes but redirects to `localhost:3000`.
+- **Railway public domain**: the auto-assigned `*.railway.internal` hostname is private and unreachable from a browser. Use Settings → Networking → **Generate Domain** to get the public `*.up.railway.app` URL.
+
+## Patterns and recurring bug classes
+
+- **`toIntOrNull()` for numeric inputs.** `Onboarding.jsx` and `Settings.jsx` both define this helper. Any HTML `<input type="number">` value bound to a `useState` starts as `''`, and an empty string sent to a Postgres `int` column throws `22P02 invalid input syntax for type integer: ""`. Coerce every numeric field before `upsert` — `years_experience`, `expected_salary_min`, `expected_salary_max`.
+- **Validate URLs before seeding `jobs` rows.** When inserting jobs server-side (via service-role Python bypassing RLS), HEAD-check each URL first. Dead-link suggestions erode end-user trust faster than missing data — there was an incident in v1.5 where 6 fabricated LinkedIn URLs shipped to the user's board.
+- **Service-role operations stay in `backend-py/` or short-lived terminal scripts.** Never expose the `SUPABASE_SERVICE_ROLE_KEY` to the browser, never commit it, never paste it into chat. The frontend uses the anon key + RLS; bulk seeding and PDF uploads use the service-role key from Railway env.
 
 ## AI Model
 
