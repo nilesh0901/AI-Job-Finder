@@ -5,7 +5,6 @@ import { updateJob, deleteJob, getMasterResume, getUserProfile,
          saveATSResume, getATSResumes, scoreATSResume, saveATSFeedback } from '../api'
 import { useAuth } from './AuthProvider'
 
-const STATUSES = ['wishlist','applied','interviewing','offer','rejected']
 const AI_TABS  = ['Cover Letter','Resume Bullets','Interview Prep','Company Brief','ATS Resume']
 
 // Linear-dark palette mapped onto react-diff-viewer-continued's slots
@@ -46,7 +45,6 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
   const { user }          = useAuth()
   const [activeTab, setActiveTab] = useState(0)
   const [notes, setNotes] = useState(job.notes || '')
-  const [status, setStatus] = useState(job.status)
   const [aiContent, setAiContent] = useState(job.ai_content || {})
   const [atsResumes, setAtsResumes] = useState([])
   const [selectedAts, setSelectedAts] = useState(null)
@@ -84,11 +82,9 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
     })
   }
 
-  async function handleStatusChange(newStatus) {
-    setStatus(newStatus)
-    const updated = await updateJob(job.id, { status: newStatus })
-    onUpdated(updated)
-  }
+  // Suggestion jobs have no scraped description — fall back to notes/title so the
+  // backend never receives a null jobDescription (caused a 422 validation error).
+  const jobDescription = job.raw_description || job.notes || job.title || ''
 
   async function handleNotesSave() {
     const updated = await updateJob(job.id, { notes })
@@ -101,7 +97,7 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
       const [resume, profile] = await Promise.all([getMasterResume(), getUserProfile()])
       const content = await generateAIContent({
         title: job.title, company: job.company,
-        jobDescription: job.raw_description,
+        jobDescription,
         masterResume: resume, userProfile: profile,
       })
       setAiContent(content)
@@ -120,7 +116,7 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
         throw new Error('Add your master resume in Settings before generating a tailored version.')
       }
       const { resumeText } = await generateATSResume({
-        jobDescription: job.raw_description, masterResume: resume, userProfile: profile,
+        jobDescription, masterResume: resume, userProfile: profile,
       })
       const saved = await saveATSResume(job.id, resumeText, resume)
       setAtsResumes(prev => [saved, ...prev])
@@ -143,12 +139,12 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
   }
 
   async function handleScore() {
-    if (!selectedAts || !job.raw_description) return
+    if (!selectedAts) return
     setScoring(true); setError('')
     try {
       const result = await scoreATSResume({
         resumeText: selectedAts.content,
-        jobDescription: job.raw_description,
+        jobDescription,
       })
       setAtsScore(result)
     } catch (e) { setError(e.message) }
@@ -193,16 +189,6 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
             {job.company && <span className="detail-company">{job.company}</span>}
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
-        </div>
-
-        {/* Status selector */}
-        <div className="status-row">
-          {STATUSES.map(s => (
-            <button key={s} onClick={() => handleStatusChange(s)}
-              className={`status-btn status-${s} ${status === s ? 'active' : ''}`}>
-              {s}
-            </button>
-          ))}
         </div>
 
         {/* AI Tabs */}

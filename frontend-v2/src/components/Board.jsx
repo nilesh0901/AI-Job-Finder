@@ -51,7 +51,7 @@ export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggest
   }
 
   const byStatus = grouped()
-  const mobileTabs = [...COLUMNS, 'suggested']
+  const mobileTabs = ['suggested', ...COLUMNS]
 
   function mobileCards(col) {
     return col === 'suggested' ? suggestions : byStatus[col]
@@ -113,11 +113,8 @@ export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggest
         onDragStart={({ active }) => setActiveJob(jobs.find(j => j.id === active.id))}
         onDragEnd={handleDragEnd}>
         <div className="board">
-          {COLUMNS.map(col => (
-            <Column key={col} id={col} jobs={byStatus[col]} onJobClick={onJobClick} />
-          ))}
-
-          {/* Suggested rail — read-only: cards drag OUT, nothing drops IN */}
+          {/* Suggested rail — read-only: cards drag OUT, nothing drops IN.
+              Rendered first so it sits as the leading column. */}
           <div className="column column-suggested">
             <div className="column-header">
               <span className="column-title column-label">✦ Suggested</span>
@@ -142,6 +139,10 @@ export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggest
               )}
             </div>
           </div>
+
+          {COLUMNS.map(col => (
+            <Column key={col} id={col} jobs={byStatus[col]} onJobClick={onJobClick} />
+          ))}
         </div>
         <DragOverlay>
           {activeJob ? <JobCard job={activeJob} onClick={() => {}} /> : null}

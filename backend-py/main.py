@@ -73,18 +73,18 @@ class ScrapeRequest(BaseModel):
 class GenerateRequest(BaseModel):
     title: str
     company: str | None = ""
-    jobDescription: str
+    jobDescription: str | None = ""
     masterResume: str | None = ""
     userProfile: dict | None = None
 
 class ATSResumeRequest(BaseModel):
-    jobDescription: str
+    jobDescription: str | None = ""
     masterResume: str | None = ""
     userProfile: dict | None = None
 
 class ATSScoreRequest(BaseModel):
     resumeText: str
-    jobDescription: str
+    jobDescription: str | None = ""
 
 class PDFRequest(BaseModel):
     resumeText: str
