@@ -7,3 +7,11 @@ SUPABASE_ANON_KEY=your_anon_key_here
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 FRONTEND_URL=https://your-app.vercel.app
 PORT=8000
+
+# Job suggestion sources (optional — suggestions still work without these,
+# but India coverage is much better with them). Both have free tiers.
+# Adzuna: https://developer.adzuna.com/  (register → app_id + app_key)
+ADZUNA_APP_ID=your_adzuna_app_id_here
+ADZUNA_APP_KEY=your_adzuna_app_key_here
+# Jooble: https://jooble.org/api/about  (request a free API key)
+JOOBLE_API_KEY=your_jooble_api_key_here

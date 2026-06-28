@@ -3,6 +3,8 @@ import { getMasterResume, saveMasterResume, getUserProfile, saveUserProfile } fr
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthProvider'
 
+const COUNTRIES = ['India','United States','United Kingdom','Canada','Australia','Germany','Singapore','Netherlands','France']
+
 // Coerce string/empty values to int|null before sending to Postgres int columns
 function toIntOrNull(v) {
   if (v === '' || v === null || v === undefined) return null
@@ -97,6 +99,21 @@ export default function Settings({ onClose }) {
             <input className="input" type="number" placeholder="Years of experience"
               value={profile.years_experience || ''}
               onChange={e => setP('years_experience', e.target.value)} />
+
+            <label className="settings-label" style={{ marginTop: 8 }}>Job location</label>
+            <select className="input" value={profile.preferred_country || 'India'}
+              onChange={e => setP('preferred_country', e.target.value)}>
+              {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <input className="input" placeholder="City (optional, e.g. Bengaluru)"
+              value={profile.preferred_city || ''}
+              onChange={e => setP('preferred_city', e.target.value)} />
+            <label className="remote-toggle">
+              <input type="checkbox"
+                checked={profile.open_to_remote !== false}
+                onChange={e => setP('open_to_remote', e.target.checked)} />
+              <span>Also include worldwide remote jobs</span>
+            </label>
 
             <label className="settings-label" style={{ marginTop: 8 }}>Custom skills</label>
             <div className="custom-skill-row">
