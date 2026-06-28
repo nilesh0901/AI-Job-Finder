@@ -1,4 +1,5 @@
 # AI Job Finder — Automated Testing Agent
+**Last updated:** 2026-06-29 — covers v2.0 → v2.2
 
 > Paste this entire file as a prompt into Claude (Cowork or Claude Code). Claude will
 > use Claude in Chrome to run a full functional test of the live app and return a
@@ -13,7 +14,7 @@ and test every feature listed. Use `Claude in Chrome` tools to navigate, click, 
 and verify outcomes. Record PASS / FAIL / SKIP for each test case. At the end, produce a
 markdown report (see template below).
 
-**Live URL:** `https://your-app.vercel.app` ← replace with actual Vercel URL
+**Live URL:** `https://ai-job-finder-jzpw4czvm-nilesh0901s-projects.vercel.app/` ← replace with actual Vercel URL
 
 **Test account credentials:** use a dedicated test Google account (not Nilesh's personal account).
 If testing email/password, use: `test@gmail.com` / `Test1234` (create in Supabase Auth first).
@@ -53,6 +54,9 @@ If testing email/password, use: `test@gmail.com` / `Test1234` (create in Supabas
 | 3.3 | Scrape login-walled URL | Paste a LinkedIn job URL | Error message: "requires login — paste manually" |
 | 3.4 | Manual entry | Fill title, company, status, click Save | Job card appears in correct column |
 | 3.5 | Empty URL | Click Scrape with empty URL | Validation error shown |
+| 3.6 | Fit score on scrape | Scrape a job URL (profile must have tech_stack set) | Fit score (0–10) and fit label appear on the saved card |
+| 3.7 | Scraped meta fields | After scrape, save the job | Card shows work_mode, job_type, seniority chips if detected |
+| 3.8 | Company logo | Scrape a well-known company URL | Company logo (28px) or letter-placeholder appears on card |
 
 ### Module 4: Kanban Board
 
@@ -62,6 +66,12 @@ If testing email/password, use: `test@gmail.com` / `Test1234` (create in Supabas
 | 4.2 | Drag-and-drop | Drag a card to another column | Card moves; status updated in DB |
 | 4.3 | Mobile layout | Resize browser to 375px wide | Tab switcher appears; single column shown |
 | 4.4 | Mobile tab switch | Tap each tab | Correct column cards shown |
+| 4.5 | Promote suggestion | Drag a Suggested card into Wishlist column | Card moves to Wishlist; `is_suggestion` cleared; no longer in Suggested rail |
+| 4.6 | Mark viewed on open | Click any job card to open modal, close it | Card is now marked viewed (viewed_at set in DB) |
+| 4.7 | Hide Viewed toggle | With ≥1 viewed job, click "Hide viewed (N)" button in board controls | Toggle turns active-blue; viewed cards disappear from all columns |
+| 4.8 | Unhide Viewed | Click "Showing unviewed (N hidden)" | All cards reappear; toggle resets |
+| 4.9 | Toggle not shown | Board with zero viewed jobs | No Hide Viewed toggle rendered |
+| 4.10 | Mobile fit badge | Open mobile view; cards with fit scores | Fit badge visible on mobile card layout |
 
 ### Module 5: Job Detail Modal
 
@@ -101,10 +111,29 @@ If testing email/password, use: `test@gmail.com` / `Test1234` (create in Supabas
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
 | 8.1 | Refresh button | Click ↻ in Suggested column | Loading state shows; jobs appear within 30s |
-| 8.2 | Source labels | Check cards in Suggested column | Each card shows source (RemoteOK / Arbeitnow / HackerNews) |
+| 8.2 | Source labels | Check cards in Suggested column | Each card shows source (Indeed / Remotive / RemoteOK / Arbeitnow / HackerNews) |
 | 8.3 | External link | Click "↗" on a suggestion card | Opens correct job URL in new tab |
-| 8.4 | Promote suggestion | Drag suggestion card to "Applied" | Card moves to Applied; no longer in Suggested |
+| 8.4 | Promote suggestion | Drag suggestion card to "Applied" column | Card moves to Applied; is_suggestion cleared; no longer in Suggested |
 | 8.5 | No duplicates | Refresh twice | Already-added jobs don't appear again |
+| 8.6 | Indeed source | Check cards after refresh | At least some cards sourced from "Indeed" (India RSS) |
+| 8.7 | Remotive source | Check cards after refresh | At least some cards sourced from "Remotive" (remote tech) |
+| 8.8 | Zero results handled | Profile with obscure keywords that match nothing | Returns `inserted: 0` without error; no crash |
+| 8.9 | Empty board refresh | New user with no jobs, click refresh | Suggestions appear; no dedup error |
+
+### Module 9: Fit Score Engine (v2.2)
+
+| # | Test | Steps | Expected |
+|---|------|-------|----------|
+| 9.1 | Fit badge on card | Add a job via URL scrape (profile has tech_stack) | Coloured fit badge (e.g. "8.5 Great fit!") appears on the Kanban card |
+| 9.2 | No badge without score | Add a job manually (no scrape) | No fit badge on card — badge is only shown when fit_score is non-null |
+| 9.3 | Label colour mapping | Verify badge colours across labels | Perfect ≥9.5 → purple; Great ≥8.0 → green; Good ≥6.5 → blue; Fair ≥5.0 → yellow; Low <5 → grey |
+| 9.4 | work_mode chip | Scrape a remote job | "remote" chip appears in card meta chips row |
+| 9.5 | job_type chip | Scrape a full-time job | "full-time" chip appears in card meta chips row |
+| 9.6 | seniority chip | Scrape a senior role | "senior" chip appears in card meta chips row |
+| 9.7 | salary_text chip | Scrape a job with salary info | Salary chip appears in card meta chips row |
+| 9.8 | Company logo | Scrape Stripe / Notion / any big-brand job | Company logo renders at 28px; broken image replaced by letter placeholder |
+| 9.9 | Letter placeholder | Scrape a job where logo URL is absent | First letter of company name shown in placeholder circle |
+| 9.10 | Fit score on suggestion | Click ↻ refresh suggestions (profile has tech_stack) | Suggested cards include fit badges |
 
 ---
 
@@ -113,14 +142,14 @@ If testing email/password, use: `test@gmail.com` / `Test1234` (create in Supabas
 After testing, output this exact structure:
 
 ```
-# AI Job Finder v2.1 — QA Report
+# AI Job Finder v2.2 — QA Report
 Date: [DATE]
 Tester: Claude QA Agent
 App URL: [URL]
 Browser: Chrome [VERSION]
 
 ## Summary
-- Total tests: [N]
+- Total tests: [N] (v2.2 adds Modules 9 + expanded 3, 4, 8)
 - Passed: [N]
 - Failed: [N]
 - Skipped: [N]
