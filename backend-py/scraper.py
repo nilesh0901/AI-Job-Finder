@@ -14,6 +14,8 @@ The /scrape route wraps this in { success: True, ... }; on ValueError it returns
 { success: False, error: <message> } so the frontend can show it inline.
 """
 
+import re
+
 import httpx
 from bs4 import BeautifulSoup
 
@@ -125,11 +127,81 @@ async def scrape_job(url: str) -> dict:
     if not title and not raw_description:
         raise ValueError("Could not extract meaningful content from this URL")
 
+    # ── Job type ─────────────────────────────────────────────────────────
+    text_lower = (title + " " + raw_description).lower()
+    job_type = None
+    if any(t in text_lower for t in ("full-time", "full time", "permanent", "fulltime")):
+        job_type = "full-time"
+    elif any(t in text_lower for t in ("part-time", "part time", "parttime")):
+        job_type = "part-time"
+    elif any(t in text_lower for t in ("contract", "freelance", "contractor", "consulting")):
+        job_type = "contract"
+
+    # ── Work mode ────────────────────────────────────────────────────────
+    work_mode = None
+    if any(t in text_lower for t in ("remote", "work from home", "wfh", "work-from-home", "distributed")):
+        work_mode = "remote"
+    elif "hybrid" in text_lower:
+        work_mode = "hybrid"
+    elif any(t in text_lower for t in ("on-site", "onsite", "in-office", "in office", "on site")):
+        work_mode = "onsite"
+
+    # ── Seniority (title takes priority over description) ────────────────
+    title_lower = title.lower()
+    seniority = None
+    if any(t in title_lower for t in ("vp ", "vice president", "director", "head of", "chief", "cto", "ceo")):
+        seniority = "lead"
+    elif any(t in title_lower for t in ("lead ", "principal", "staff ", "architect")):
+        seniority = "lead"
+    elif any(t in title_lower for t in ("senior", "sr.", " sr ")):
+        seniority = "senior"
+    elif any(t in title_lower for t in ("junior", "jr.", " jr ", "entry", "associate", "intern", "graduate")):
+        seniority = "junior"
+    elif any(t in title_lower for t in ("mid-level", "mid level", "intermediate", "ii ", "iii ")):
+        seniority = "mid"
+    else:
+        # Fallback: scan description for experience-year clues
+        if re.search(r"\b([5-9]|1[0-9])\+?\s*years?\b", text_lower):
+            seniority = "senior"
+        elif re.search(r"\b([0-2])\+?\s*years?\b", text_lower) or "entry level" in text_lower:
+            seniority = "junior"
+        elif re.search(r"\b([3-4])\+?\s*years?\b", text_lower):
+            seniority = "mid"
+
+    # ── Salary text ──────────────────────────────────────────────────────
+    salary_text = None
+    _SALARY_RE = re.compile(
+        r"(?:[\$€£₹]\s*[\d,]+(?:\s*[-–]\s*[\$€£₹]?\s*[\d,]+)?"
+        r"(?:\s*(?:per\s+)?(?:year|annum|yr|month|mo))?)"
+        r"|(?:[\d,]+\s*(?:[-–]\s*[\d,]+\s*)?(?:LPA|lpa|lakh|lakhs))"
+        r"|(?:[\d,]+\s*[-–]\s*[\d,]+\s*(?:USD|EUR|GBP|INR|K|k))",
+        re.IGNORECASE,
+    )
+    m = _SALARY_RE.search(raw_description[:4000])
+    if m:
+        salary_text = m.group(0).strip()[:100]
+
+    # ── Company logo ─────────────────────────────────────────────────────
+    company_logo_url = _meta(soup, "property", "og:image") or ""
+    if not company_logo_url:
+        favicon_tag = soup.find("link", rel=lambda r: r and "icon" in " ".join(r).lower())
+        if favicon_tag:
+            href = favicon_tag.get("href", "")
+            if href.startswith("http"):
+                company_logo_url = href
+            elif href.startswith("//"):
+                company_logo_url = "https:" + href
+
     return {
-        "title":          (title or "")[:200],
-        "company":        (company or "")[:200],
-        "location":       (location or "")[:200],
-        "rawDescription": raw_description,
+        "title":           (title or "")[:200],
+        "company":         (company or "")[:200],
+        "location":        (location or "")[:200],
+        "rawDescription":  raw_description,
+        "job_type":        job_type,
+        "work_mode":       work_mode,
+        "seniority":       seniority,
+        "salary_text":     salary_text,
+        "company_logo_url": company_logo_url or None,
     }
 
 

@@ -29,6 +29,7 @@ from scraper import scrape_job
 from ai import generate_ai_content, generate_ats_resume, score_ats_resume, test_connection
 from pdf import resume_to_pdf
 from suggestions import refresh_suggestions
+from fit_score import calculate_fit_score
 
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -69,6 +70,7 @@ app.add_middleware(
 
 class ScrapeRequest(BaseModel):
     url: str
+    user_id: str | None = None   # optional — when provided, fit score is calculated server-side
 
 class GenerateRequest(BaseModel):
     title: str
@@ -94,6 +96,9 @@ class PDFRequest(BaseModel):
 class SuggestionsRefreshRequest(BaseModel):
     user_id: str
 
+class FitScoreRequest(BaseModel):
+    user_id: str
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -116,14 +121,83 @@ async def ai_test():
 @app.post("/scrape")
 async def scrape(req: ScrapeRequest):
     """
-    Scrape a job posting URL and extract title, company, location, description.
-    Falls back gracefully — never crashes the frontend.
+    Scrape a job posting URL and extract title, company, location, description,
+    plus job_type, work_mode, seniority, salary_text, company_logo_url.
+    If user_id is provided, also computes fit_score + fit_label.
     """
     try:
         data = await scrape_job(req.url)
-        return {"success": True, **data}
+        fit_score_data = {}
+        if req.user_id:
+            profile = await _fetch_user_profile(req.user_id)
+            if profile:
+                fit_score_data = calculate_fit_score(data, profile)
+        return {"success": True, **data, **fit_score_data}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@app.post("/fit-score")
+async def recalculate_fit_scores(req: FitScoreRequest):
+    """
+    Recalculate fit scores for ALL non-suggestion jobs belonging to a user.
+    Call this when the user updates their profile (skills, location, etc.).
+    Updates jobs in-place via service-role key.
+    """
+    import httpx as _httpx
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    service_key  = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        raise HTTPException(status_code=500, detail="Supabase env vars not set")
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        profile = await _fetch_user_profile(req.user_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="User profile not found")
+
+        async with _httpx.AsyncClient(timeout=30) as client:
+            # Fetch all non-suggestion jobs for this user that have a description
+            r = await client.get(
+                f"{supabase_url}/rest/v1/jobs",
+                headers=headers,
+                params={
+                    "user_id": f"eq.{req.user_id}",
+                    "is_suggestion": "eq.false",
+                    "select": "id,title,location,work_mode,seniority,salary_text,raw_description",
+                },
+            )
+            if not r.is_success:
+                raise HTTPException(status_code=500, detail=f"Failed to fetch jobs: {r.text}")
+            jobs = r.json()
+
+        updated = 0
+        async with _httpx.AsyncClient(timeout=30) as client:
+            for job in jobs:
+                if not job.get("raw_description") and not job.get("title"):
+                    continue
+                fs = calculate_fit_score(job, profile)
+                patch = {"fit_score": fs["score"], "fit_label": fs["label"]}
+                r = await client.patch(
+                    f"{supabase_url}/rest/v1/jobs",
+                    headers={**headers, "Prefer": "return=minimal"},
+                    params={"id": f"eq.{job['id']}", "user_id": f"eq.{req.user_id}"},
+                    json=patch,
+                )
+                if r.is_success:
+                    updated += 1
+
+        return {"updated": updated}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/ai/generate")
@@ -217,6 +291,31 @@ async def resume_pdf(req: PDFRequest):
         return {"pdfUrl": url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Supabase helpers ──────────────────────────────────────────────────────────
+
+async def _fetch_user_profile(user_id: str) -> dict | None:
+    """Fetch user_profiles row for fit score calculation (service-role key)."""
+    import httpx as _httpx
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    service_key  = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return None
+
+    async with _httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(
+            f"{supabase_url}/rest/v1/user_profiles",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={"user_id": f"eq.{user_id}", "limit": "1"},
+        )
+        if r.is_success and r.json():
+            return r.json()[0]
+    return None
 
 
 # ── Supabase Storage helper ───────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import Board from './components/Board'
 import AddJobModal from './components/AddJobModal'
 import JobDetailModal from './components/JobDetailModal'
 import Settings from './components/Settings'
-import { getJobs, getUserProfile, refreshSuggestions } from './api'
+import { getJobs, getUserProfile, refreshSuggestions, markJobViewed } from './api'
 
 export default function App() {
   const { session } = useAuth()
@@ -86,6 +86,16 @@ export default function App() {
     if (selectedJob?.id === updated.id) setSelectedJob(updated)
   }
 
+  async function handleJobClick(job) {
+    setSelectedJob(job)
+    // Mark as viewed — fire-and-forget; don't block opening the modal
+    if (!job.viewed_at) {
+      markJobViewed(job.id)
+        .then(updated => handleJobUpdated(updated))
+        .catch(console.error)
+    }
+  }
+
   function handleJobAdded(job) {
     setJobs(prev => [job, ...prev])
   }
@@ -115,7 +125,7 @@ export default function App() {
       <main className="main">
         <Board
           jobs={jobs}
-          onJobClick={setSelectedJob}
+          onJobClick={handleJobClick}
           onJobUpdated={handleJobUpdated}
           onRefreshSuggestions={handleRefreshSuggestions}
         />
@@ -123,7 +133,7 @@ export default function App() {
 
       {/* ── Modals ── */}
       {showAdd && (
-        <AddJobModal onClose={() => setShowAdd(false)} onAdded={handleJobAdded} />
+        <AddJobModal onClose={() => setShowAdd(false)} onAdded={handleJobAdded} userId={userId} />
       )}
       {selectedJob && (
         <JobDetailModal
