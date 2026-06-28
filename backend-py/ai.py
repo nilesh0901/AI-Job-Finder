@@ -101,12 +101,16 @@ interviewQuestions:
 - Format: "Q1: <question>\\nStrategy: <strategy>\\n\\nQ2: ..."
 
 companyBrief:
-- 2 paragraphs, 220–300 words total.
-- Paragraph 1: what the company does (product, customer, business model) — ground only in
-  generally-known public facts; do not invent recent news or financials.
-- Paragraph 2: why this specific role matters to the company, signals about engineering
-  culture or how the team likely works (inferred from the JD's language and stack),
+- EXACTLY 2 paragraphs separated by a single blank line ("\\n\\n"). NOT 1 paragraph. NOT 3.
+- 220–300 words total across both paragraphs combined.
+- Paragraph 1 (~110–150 words): what the company does (product, customer, business model)
+  — ground only in generally-known public facts; do not invent recent news or financials.
+  End this paragraph with a period, then start paragraph 2 on a new line.
+- Paragraph 2 (~110–150 words): why this specific role matters to the company, signals about
+  engineering culture or how the team likely works (inferred from the JD's language and stack),
   and 2 smart questions the candidate could ask the interviewer.
+- If you only have content for one paragraph, you are doing it wrong — split your content
+  into "what the company is" vs "what this role means for them + interview questions".
 
 ## OUTPUT
 Return ONLY a valid JSON object with exactly these 4 string keys — no markdown fences,

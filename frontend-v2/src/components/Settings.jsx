@@ -16,14 +16,24 @@ export default function Settings({ onClose }) {
   const { user } = useAuth()
   const [resume, setResume]   = useState('')
   const [profile, setProfile] = useState({})
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState(false)
   const [error, setError]     = useState('')
   const [customSkillInput, setCustomSkillInput] = useState('')
 
   useEffect(() => {
-    getMasterResume().then(setResume).catch(() => {})
-    getUserProfile().then(p => p && setProfile(p)).catch(() => {})
+    let cancelled = false
+    Promise.all([
+      getMasterResume().catch(() => ''),
+      getUserProfile().catch(() => null),
+    ]).then(([r, p]) => {
+      if (cancelled) return
+      setResume(r || '')
+      if (p) setProfile(p)
+      setLoading(false)
+    })
+    return () => { cancelled = true }
   }, [])
 
   function setP(k, v) { setProfile(p => ({ ...p, [k]: v })) }
@@ -77,7 +87,8 @@ export default function Settings({ onClose }) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
-        <form onSubmit={handleSave} className="modal-body settings-form">
+        {loading && <div className="settings-loading">Loading your settings…</div>}
+        <form onSubmit={handleSave} className="modal-body settings-form" style={loading ? { opacity: 0.5, pointerEvents: 'none' } : {}}>
           {/* Account */}
           <section className="settings-section">
             <h3>Account</h3>
@@ -114,6 +125,19 @@ export default function Settings({ onClose }) {
                 onChange={e => setP('open_to_remote', e.target.checked)} />
               <span>Also include worldwide remote jobs</span>
             </label>
+
+            <label className="settings-label" style={{ marginTop: 8 }}>Expected salary (annual)</label>
+            <div className="salary-row">
+              <input className="input" type="number" placeholder="Min"
+                value={profile.expected_salary_min ?? ''}
+                onChange={e => setP('expected_salary_min', e.target.value)} />
+              <input className="input" type="number" placeholder="Max"
+                value={profile.expected_salary_max ?? ''}
+                onChange={e => setP('expected_salary_max', e.target.value)} />
+              <input className="input" placeholder="Currency (e.g. USD, INR)"
+                value={profile.expected_salary_currency || ''}
+                onChange={e => setP('expected_salary_currency', e.target.value)} />
+            </div>
 
             <label className="settings-label" style={{ marginTop: 8 }}>Custom skills</label>
             <div className="custom-skill-row">

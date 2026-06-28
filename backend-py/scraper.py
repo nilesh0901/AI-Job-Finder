@@ -34,6 +34,15 @@ _WALL_SIGNALS = ["sign in to", "log in to", "create an account", "join linkedin"
 
 _TITLE_SEPARATORS = [" | ", " - ", " – ", " — "]
 
+# When og:site_name returns one of these platform names, it's the site brand —
+# not the actual employer. Fall through to other selectors / heuristics instead.
+_PLATFORM_NAMES = {
+    "remote ok", "remoteok", "linkedin", "indeed", "glassdoor", "weworkremotely",
+    "we work remotely", "stack overflow", "angellist", "wellfound", "lever",
+    "greenhouse", "workable", "smartrecruiters", "ycombinator", "hacker news",
+    "jobs", "careers",
+}
+
 
 async def scrape_job(url: str) -> dict:
     """
@@ -70,13 +79,29 @@ async def scrape_job(url: str) -> dict:
             break
 
     # ── Company ──────────────────────────────────────────────────────────
-    company = (
-        _meta(soup, "name", "author")
-        or _meta(soup, "property", "og:site_name")
-        or _text(soup, "[data-testid='inlineHeader-companyName']")
-        or _text(soup, ".job-details-jobs-unified-top-card__company-name")
-        or _text(soup, "[class*='company']")
-    )
+    # RemoteOK puts the employer name in an h2 inside the job posting; the og:site_name
+    # is just "Remote OK". Prefer page-level selectors before falling back to meta tags.
+    candidate_companies = [
+        _meta(soup, "name", "author"),
+        _text(soup, "[data-testid='inlineHeader-companyName']"),
+        _text(soup, ".job-details-jobs-unified-top-card__company-name"),
+        _text(soup, "h2.companyLink"),                # RemoteOK
+        _text(soup, "[itemprop='hiringOrganization']"),  # schema.org
+        _text(soup, "a[href*='/company/']"),          # generic
+        _text(soup, "[class*='company-name']"),
+        _text(soup, "[class*='employer']"),
+        _meta(soup, "property", "og:site_name"),
+        _text(soup, "[class*='company']"),
+    ]
+    company = ""
+    for c in candidate_companies:
+        c = (c or "").strip()
+        if not c:
+            continue
+        if c.lower() in _PLATFORM_NAMES:
+            continue
+        company = c
+        break
 
     # ── Location ─────────────────────────────────────────────────────────
     location = (
@@ -128,14 +153,26 @@ async def scrape_job(url: str) -> dict:
         raise ValueError("Could not extract meaningful content from this URL")
 
     # ── Job type ─────────────────────────────────────────────────────────
-    text_lower = (title + " " + raw_description).lower()
+    # Some boards (RemoteOK, Remotive) expose job type as visible chip tags rather than
+    # body prose, so include all class/data attribute values plus tag text in the search.
+    tag_blob = " ".join(
+        (el.get("class") and " ".join(el.get("class"))) or ""
+        for el in soup.find_all(True)
+    )
+    data_blob = " ".join(
+        v for el in soup.find_all(True)
+        for k, v in el.attrs.items() if k.startswith("data-") and isinstance(v, str)
+    )
+    text_lower = (title + " " + raw_description + " " + tag_blob + " " + data_blob).lower()
     job_type = None
-    if any(t in text_lower for t in ("full-time", "full time", "permanent", "fulltime")):
+    if any(t in text_lower for t in ("full-time", "full time", "permanent", "fulltime", "full_time")):
         job_type = "full-time"
-    elif any(t in text_lower for t in ("part-time", "part time", "parttime")):
+    elif any(t in text_lower for t in ("part-time", "part time", "parttime", "part_time")):
         job_type = "part-time"
     elif any(t in text_lower for t in ("contract", "freelance", "contractor", "consulting")):
         job_type = "contract"
+    elif any(t in text_lower for t in ("internship", "intern ")):
+        job_type = "internship"
 
     # ── Work mode ────────────────────────────────────────────────────────
     work_mode = None
