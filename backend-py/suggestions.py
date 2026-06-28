@@ -91,11 +91,16 @@ def _location_ok(location_text: str, city: str, country: str, open_to_remote: bo
 
 
 async def _validate_url(client: httpx.AsyncClient, url: str) -> bool:
-    """HEAD-check a URL. Returns True if the job page is reachable (2xx or 3xx)."""
+    """HEAD-check a URL. Returns True if the job page is reachable (2xx or 3xx).
+    Only used for Adzuna/Jooble where redirect_url quality varies."""
     try:
         r = await client.head(url, timeout=8.0, follow_redirects=True)
-        return r.status_code < 400
-    except Exception:
+        ok = r.status_code < 400
+        if not ok:
+            print(f"[suggestions] URL validation failed ({r.status_code}): {url[:80]}")
+        return ok
+    except Exception as e:
+        print(f"[suggestions] URL validation error ({e}): {url[:80]}")
         return False
 
 
@@ -231,7 +236,9 @@ async def _fetch_remoteok(keywords: list[str], freshness_days: int,
             print(f"[suggestions] RemoteOK fetch failed: {e}")
             return []
 
+        print(f"[suggestions] RemoteOK raw jobs: {len(jobs)}")
         kw_lower = [k.lower() for k in keywords]
+        skipped_freshness = skipped_kw = skipped_loc = 0
 
         for job in jobs:
             if not isinstance(job, dict):
@@ -241,6 +248,7 @@ async def _fetch_remoteok(keywords: list[str], freshness_days: int,
             if epoch:
                 posted = datetime.fromtimestamp(epoch, tz=timezone.utc)
                 if posted < cutoff:
+                    skipped_freshness += 1
                     continue
 
             searchable = (
@@ -248,14 +256,16 @@ async def _fetch_remoteok(keywords: list[str], freshness_days: int,
                 f"{' '.join(job.get('tags', []))}"
             ).lower()
             if not any(kw in searchable for kw in kw_lower):
+                skipped_kw += 1
                 continue
 
             location = job.get("location") or "Remote"
             if not _location_ok(location, city, country, open_to_remote):
+                skipped_loc += 1
                 continue
 
             url = job.get("url", "")
-            if not url or not await _validate_url(client, url):
+            if not url:
                 continue
 
             results.append({
@@ -270,6 +280,7 @@ async def _fetch_remoteok(keywords: list[str], freshness_days: int,
             if len(results) >= MAX_PER_SOURCE:
                 break
 
+    print(f"[suggestions] RemoteOK kept={len(results)} skipped(freshness={skipped_freshness}, kw={skipped_kw}, loc={skipped_loc})")
     return results
 
 
@@ -288,7 +299,9 @@ async def _fetch_arbeitnow(keywords: list[str], freshness_days: int,
             print(f"[suggestions] Arbeitnow fetch failed: {e}")
             return []
 
+        print(f"[suggestions] Arbeitnow raw jobs: {len(jobs)}")
         kw_lower = [k.lower() for k in keywords]
+        skipped_freshness = skipped_kw = skipped_loc = 0
 
         for job in jobs:
             created_at = job.get("created_at", "")
@@ -298,6 +311,7 @@ async def _fetch_arbeitnow(keywords: list[str], freshness_days: int,
                     if posted.tzinfo is None:
                         posted = posted.replace(tzinfo=timezone.utc)
                     if posted < cutoff:
+                        skipped_freshness += 1
                         continue
                 except Exception:
                     pass
@@ -307,14 +321,16 @@ async def _fetch_arbeitnow(keywords: list[str], freshness_days: int,
                 f"{' '.join(job.get('tags', []))}"
             ).lower()
             if not any(kw in searchable for kw in kw_lower):
+                skipped_kw += 1
                 continue
 
             location = job.get("location") or ("Remote" if job.get("remote") else "")
             if not _location_ok(location, city, country, open_to_remote):
+                skipped_loc += 1
                 continue
 
             url = job.get("url", "")
-            if not url or not await _validate_url(client, url):
+            if not url:
                 continue
 
             results.append({
@@ -329,6 +345,7 @@ async def _fetch_arbeitnow(keywords: list[str], freshness_days: int,
             if len(results) >= MAX_PER_SOURCE:
                 break
 
+    print(f"[suggestions] Arbeitnow kept={len(results)} skipped(freshness={skipped_freshness}, kw={skipped_kw}, loc={skipped_loc})")
     return results
 
 
@@ -356,13 +373,18 @@ async def _fetch_hn(keywords: list[str], freshness_days: int,
             print(f"[suggestions] HN Algolia fetch failed: {e}")
             return []
 
+        print(f"[suggestions] HN raw hits: {len(hits)}")
+        skipped_hiring = skipped_loc = 0
+
         for hit in hits:
             text = (hit.get("comment_text") or hit.get("title") or "").lower()
             if "hiring" not in text and "looking for" not in text:
+                skipped_hiring += 1
                 continue
 
             # Region gate: keep if the post mentions the region, or is remote.
             if not _location_ok(text, city, country, open_to_remote):
+                skipped_loc += 1
                 continue
 
             urls = re.findall(r'https?://[^\s<>"\']+', text)
@@ -370,9 +392,6 @@ async def _fetch_hn(keywords: list[str], freshness_days: int,
 
             title_raw = hit.get("title") or text.split("\n")[0][:150]
             title = (title_raw or "HN Job Posting")[:200]
-
-            if not await _validate_url(client, url):
-                continue
 
             results.append({
                 "title": title,
@@ -386,6 +405,7 @@ async def _fetch_hn(keywords: list[str], freshness_days: int,
             if len(results) >= MAX_PER_SOURCE:
                 break
 
+    print(f"[suggestions] HN kept={len(results)} skipped(not-hiring={skipped_hiring}, loc={skipped_loc})")
     return results
 
 
@@ -439,6 +459,10 @@ async def refresh_suggestions(user_id: str) -> dict:
     country_code = _adzuna_code(preferred_country)
     jooble_location = preferred_city or preferred_country
 
+    print(f"[suggestions] user={user_id[:8]}... keywords={keywords[:5]} "
+          f"country={preferred_country} city='{preferred_city}' "
+          f"remote={open_to_remote} freshness={freshness_days}d")
+
     adzuna_jobs, jooble_jobs, remote_ok_jobs, arbeitnow_jobs, hn_jobs = await asyncio.gather(
         _fetch_adzuna(keywords, country_code, preferred_city, freshness_days),
         _fetch_jooble(keywords, jooble_location, freshness_days),
@@ -446,6 +470,9 @@ async def refresh_suggestions(user_id: str) -> dict:
         _fetch_arbeitnow(keywords, freshness_days, preferred_city, preferred_country, open_to_remote),
         _fetch_hn(keywords, freshness_days, preferred_city, preferred_country, open_to_remote),
     )
+
+    print(f"[suggestions] raw totals — adzuna={len(adzuna_jobs)} jooble={len(jooble_jobs)} "
+          f"remoteok={len(remote_ok_jobs)} arbeitnow={len(arbeitnow_jobs)} hn={len(hn_jobs)}")
 
     existing_urls = _get_existing_urls(supabase, user_id)
 
@@ -483,8 +510,7 @@ async def refresh_suggestions(user_id: str) -> dict:
             "url": j["url"],
             "location": j.get("location", ""),
             "status": "wishlist",
-            "notes": j.get("notes", ""),
-            "source": j.get("source", ""),
+            "notes": j.get("notes", ""),  # "Source: X | ..." provenance stored here; no source column yet
             "is_suggestion": True,
             "added_at": now,
         }

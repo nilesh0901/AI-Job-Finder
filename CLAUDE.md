@@ -61,7 +61,8 @@ Three pieces, hosted separately:
   - `ai.py` — Groq client (`llama-3.3-70b-versatile`), `@lru_cache` on the client init. Exposes `generate_ai_content`, `generate_ats_resume`, `score_ats_resume`, `test_connection`.
   - `railway.toml` — forces nixpacks builder and `uvicorn main:app --host 0.0.0.0 --port $PORT` start command. Required because Railway's cached `railpack-plan.json` otherwise wins and runs `node server.js` instead of uvicorn.
   - `scraper.py` — Python equivalent of v1's scraper (httpx + BeautifulSoup4).
-  - `pdf.py` — `resume_to_pdf(text)` → bytes via **WeasyPrint**. Uploaded to Supabase Storage bucket `resumes` at `{user_id}/{job_id}/{uuid}.pdf` using the service-role key.
+  - `pdf.py` — `resume_to_pdf(text)` → bytes via **fpdf2** (pure Python, no native libs). WeasyPrint was removed because Railway's nixpacks image lacks the GObject/Pango/Cairo chain it needs. fpdf2 uses core latin-1 fonts; `_sanitize()` maps smart-quotes, em-dashes, and `•` → `·` (middle dot) before encoding.
+  - `requirements.txt` — uses `fpdf2==2.8.1` (not weasyprint).
   - `Procfile` — Railway deployment hint.
 
 - **`frontend-v2/`** — React + Vite + Supabase JS SDK. Notable deps: `@dnd-kit/core` + `@dnd-kit/sortable` (Kanban drag), `react-diff-viewer-continued` (ATS resume side-by-side diff).
@@ -72,9 +73,10 @@ Three pieces, hosted separately:
   - `src/index.css` — same Linear-dark design system as v1 (canvas `#010102`, surfaces 1–4, accent `--primary: #5e6ad2` used scarcely).
   - `.env` is **committed** (anon key only) and read at Vite build time — do not move secrets here. Service-role key lives in `backend-py/.env` only.
 
-- **`supabase/migrations/0001_init.sql`** — schema source of truth.
-  - Tables: `user_profiles` (onboarding answers), `jobs` (the Kanban cards), `master_resumes` (one per user), `ats_resumes` (versioned, tied to a job), `ats_resume_feedback` (star ratings per ATS version).
-  - `ats_resumes` has a `master_resume_snapshot text` column (added in Version2.0 — run `alter table ats_resumes add column if not exists master_resume_snapshot text` if not already applied). Stores the exact master resume used at generation time so the diff view stays accurate even after the master is edited.
+- **`supabase/migrations/`** — schema source of truth (run in order).
+  - `0001_init.sql` — base schema: `user_profiles`, `jobs`, `master_resumes`, `ats_resumes`, `ats_resume_feedback`.
+  - `0002_*` — `master_resume_snapshot text` column on `ats_resumes` (added Version2.0). Stores the exact master resume at generation time so the diff view stays accurate even after the master is edited.
+  - `0003_location.sql` — adds `preferred_country text default 'India'`, `preferred_city text default ''`, `open_to_remote boolean default true` to `user_profiles` (Version2.1 / PR #18). Run this before deploying the India suggestions feature.
   - `ats_resume_feedback` — `rating smallint` (1–5), `kept_changes boolean`, `comments text`; RLS `using (auth.uid() = user_id)`.
   - **All tables have RLS enabled with `using (auth.uid() = user_id)` policies** — the browser talks to Postgres directly, so a buggy frontend physically cannot leak data across users.
   - Status check constraint on `jobs.status`: `wishlist | applied | interviewing | offer | rejected`.
@@ -84,10 +86,22 @@ Three pieces, hosted separately:
 - **ATS resume tab** (`JobDetailModal.jsx` → tab 4, Version2.0): Final/Diff toggle, `◎ ATS Score` button, star feedback widget (1–5 + kept-changes + comment), version history. ReactDiffViewer wrapped in `.ats-diff-scroll` (max-height 520px, scrollable) — don't revert to `overflow: hidden` on the parent.
 - **ATS Score panel**: calls `POST /ai/ats-score` → `score_ats_resume()` in `ai.py`. Returns `overall_score`, `keyword_score`, `structure_score`, `keywords_found`, `keywords_missing`, `improvements`. Displayed as a dial + breakdown chips + fix tips.
 - **master_resume_snapshot**: stored per ATS version in `ats_resumes.master_resume_snapshot`. Diff view uses this as `oldValue`; falls back to current `masterResume` state for older rows that lack it.
+- **PDF export** (`POST /resume/pdf`): fpdf2 generates the PDF; `_upload_pdf_to_supabase()` in `main.py` auto-creates the `resumes` bucket on first call (idempotent `POST /storage/v1/bucket`), uploads the file, then mints a **signed URL** (1-hour expiry via `POST /storage/v1/object/sign/{bucket}/{path}`) — returns `{supabase_url}/storage/v1{signedURL}`. Public URLs were replaced with signed URLs because the bucket is private (personal resume data).
+- **Suggestion cards — AI content fix** (`JobDetailModal.jsx`): suggestion jobs from RemoteOK/Arbeitnow/HN have `raw_description = null`. A `jobDescription` const now coalesces `job.raw_description || job.notes || job.title || ''` and is used in all three AI handlers (`handleGenerateAI`, `handleGenerateATS`, `handleScore`). Backend Pydantic models (`GenerateRequest`, `ATSResumeRequest`, `ATSScoreRequest`) accept `str | None = ""` so a missing description no longer causes a 422.
+- **Suggested column first** (`Board.jsx`): SuggestionsRail `<div>` rendered before `{COLUMNS.map(...)}` on desktop; mobile tab order is `['suggested', ...COLUMNS]`.
+- **Status pills removed** (`JobDetailModal.jsx`): the `STATUSES` constant, `status` state, `handleStatusChange`, and the `<div className="status-row">` block were all deleted from the modal.
+- **India-region job suggestions + location preference** (Version2.1, PR #18):
+  - `suggestions.py` completely rewritten: fans out to 5 sources — **Adzuna** (uses `ADZUNA_APP_ID`/`ADZUNA_APP_KEY`; India endpoint `/v1/api/jobs/in/search/1`), **Jooble** (uses `JOOBLE_API_KEY`; POST with keywords + location), plus RemoteOK, Arbeitnow, HN. All sources are location-filtered via `_location_ok()` — keeps remote jobs (if `open_to_remote=true`) and jobs matching the user's country/city; drops unrelated regions.
+  - `refresh_suggestions()` reads `preferred_country` (default `India`), `preferred_city`, `open_to_remote` from the user's profile row.
+  - `Onboarding.jsx` now has **6 steps**: Field → Location → Experience → Tech Stack → Salary → Job Alerts. The Location step (step 1) has a country dropdown (default India), optional city input, and a remote-jobs toggle.
+  - `Settings.jsx` has the same three location fields so existing users can update their preference.
+  - `supabase/migrations/0003_location.sql` adds `preferred_country text default 'India'`, `preferred_city text default ''`, `open_to_remote boolean default true` to `user_profiles`. **Run this in the Supabase SQL editor before merging PR #18.**
+  - `Env_example` documents `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` (developer.adzuna.com), `JOOBLE_API_KEY` (jooble.org/api/about) — optional; sources skip gracefully if absent.
+  - `index.css` adds `.remote-toggle` styles.
 
 ### v2 known gaps (in active build)
-- `jobs.source` column does not exist yet. SuggestionsRail will add it via a follow-up migration. Until then, source provenance is stashed in `jobs.notes` as text like `"Source: LinkedIn"`.
-- No SuggestionsRail UI yet — empty board shows zero suggestions. Plan covers fan-out across Indeed (MCP) / ZipRecruiter (MCP) / RemoteOK / HN / web search. New-user post-onboarding wishlist auto-seeding (based on `user_profiles.field` + `tech_stack` + salary) is pending.
+- `jobs.source` column does not exist yet. Source provenance is stashed in `jobs.notes` as text like `"Source: RemoteOK"` until a migration adds the column.
+- New-user post-onboarding wishlist auto-seeding is pending (suggestions currently require a manual refresh trigger).
 
 ## Deployment gotchas (v2)
 
@@ -97,6 +111,15 @@ Two prod-only misconfigs we've hit more than once — check these first when som
 - **`FRONTEND_URL` on Railway must equal the Vercel URL** (with `https://`, no trailing slash). It feeds the CORS allowlist in `main.py`. Missing/wrong value → CORS preflight rejection → browser console shows **"Failed to fetch"** with no body. Note: Supabase calls keep working in this state because they go to Supabase, not Railway — so a half-broken board (auth + CRUD fine, AI buttons dead) is the signature of a Railway CORS misconfig.
 - **Supabase Auth → URL Configuration**: Site URL and Redirect URLs must include the Vercel URL (with `/**` wildcards). Otherwise Google SSO completes but redirects to `localhost:3000`.
 - **Railway public domain**: the auto-assigned `*.railway.internal` hostname is private and unreachable from a browser. Use Settings → Networking → **Generate Domain** to get the public `*.up.railway.app` URL.
+
+## PR discipline
+
+**Always verify the last commit is on the branch before opening a PR.** The pattern that bit us three times: a fix was coded, the PR was opened, the user merged it — then the final commit arrived *after* merge, meaning production never got the fix. Checklist before `gh pr create`:
+1. `git log --oneline -5` — confirm the fix commit is listed.
+2. `git push` — confirm it reaches the remote.
+3. Only then open the PR.
+
+If a fix commit missed a PR that was already merged, create a **fresh branch off master** (e.g. `hotfix/...`), cherry-pick the missing commit(s) onto it, and open a new PR.
 
 ## Patterns and recurring bug classes
 
@@ -119,6 +142,9 @@ Linear-inspired dark theme, identical across v1 and v2. Key tokens in `index.css
 - `README.md` — public-facing project overview (v1 + v2). Update when shipping user-visible features.
 - `HANDOFF.md` — most recent session handoff notes; read this first if resuming work after a gap.
 - `v2-plan.md` — root-level v2 build plan with phases and verification checkpoints.
-- `~/.claude/plans/plug-a-web-application-typed-nygaard.md` — original v2 deployment plan written in plan mode. Now superseded by `v2-plan.md` + `HANDOFF.md`; treat as historical.
 - `test-connections.py` — quick Groq + Supabase reachability check at repo root.
 - `push-v1.2.bat` / `setup-venv.bat` — Windows helper scripts. Read before modifying.
+
+### Open PRs as of Version2.1
+- **PR #17** (`hotfix/v2.1-storage`) — PDF storage fix: bucket auto-create + signed URLs. **Blocking production** — PDF download is broken until this merges.
+- **PR #18** (`feat/location-india`) — India-region suggestions + location preference in onboarding/settings. Requires `0003_location.sql` to be run in Supabase SQL editor first.
