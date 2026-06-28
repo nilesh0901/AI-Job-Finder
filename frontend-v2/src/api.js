@@ -127,11 +127,11 @@ export async function saveATSResume(jobId, content, masterResumeSnapshot = '', p
 
 // ── FastAPI calls ─────────────────────────────────────────────────────────────
 
-export async function scrapeJob(url) {
+export async function scrapeJob(url, userId) {
   const r = await fetch(`${API}/scrape`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, user_id: userId || undefined }),
   })
   // Even when the backend deliberately returns { success: false, error: "..." } it uses HTTP 200.
   // A non-2xx here means the route itself is unreachable (CORS, 404, 500, Railway down).
@@ -184,6 +184,27 @@ export async function scoreATSResume({ resumeText, jobDescription }) {
 
 export async function refreshSuggestions(userId) {
   const r = await fetch(`${API}/suggestions/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
+export async function markJobViewed(jobId) {
+  const { data, error } = await supabase
+    .from('jobs')
+    .update({ viewed_at: new Date().toISOString() })
+    .eq('id', jobId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function recalculateFitScores(userId) {
+  const r = await fetch(`${API}/fit-score`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId }),

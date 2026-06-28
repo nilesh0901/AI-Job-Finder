@@ -1,13 +1,18 @@
 import { useState } from 'react'
 import { scrapeJob, createJob } from '../api'
 
-export default function AddJobModal({ onClose, onAdded }) {
+export default function AddJobModal({ onClose, onAdded, userId }) {
   const [mode, setMode]     = useState('url')   // 'url' | 'manual'
   const [url, setUrl]       = useState('')
   const [scraping, setScraping] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
-  const [form, setForm]     = useState({ title: '', company: '', location: '', raw_description: '', url: '' })
+  const [form, setForm]     = useState({
+    title: '', company: '', location: '', raw_description: '', url: '',
+    job_type: null, work_mode: null, seniority: null,
+    salary_text: null, company_logo_url: null,
+    fit_score: null, fit_label: null,
+  })
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
@@ -16,10 +21,22 @@ export default function AddJobModal({ onClose, onAdded }) {
     setError('')
     setScraping(true)
     try {
-      const data = await scrapeJob(url)
+      const data = await scrapeJob(url, userId)
       if (!data.success) throw new Error(data.error || 'Scrape failed')
-      setForm({ title: data.title || '', company: data.company || '', location: data.location || '',
-        raw_description: data.rawDescription || '', url })
+      setForm({
+        title:           data.title || '',
+        company:         data.company || '',
+        location:        data.location || '',
+        raw_description: data.rawDescription || '',
+        url,
+        job_type:        data.job_type || null,
+        work_mode:       data.work_mode || null,
+        seniority:       data.seniority || null,
+        salary_text:     data.salary_text || null,
+        company_logo_url: data.company_logo_url || null,
+        fit_score:       data.score ?? null,
+        fit_label:       data.label || null,
+      })
       setMode('manual')
     } catch (err) {
       setError(err.message)
@@ -37,8 +54,19 @@ export default function AddJobModal({ onClose, onAdded }) {
     setError('')
     try {
       const job = await createJob({
-        title: form.title, company: form.company, location: form.location,
-        url: form.url, raw_description: form.raw_description, status: 'wishlist',
+        title:           form.title,
+        company:         form.company,
+        location:        form.location,
+        url:             form.url,
+        raw_description: form.raw_description,
+        status:          'wishlist',
+        job_type:        form.job_type,
+        work_mode:       form.work_mode,
+        seniority:       form.seniority,
+        salary_text:     form.salary_text,
+        company_logo_url: form.company_logo_url,
+        fit_score:       form.fit_score,
+        fit_label:       form.fit_label,
       })
       onAdded(job)
       onClose()

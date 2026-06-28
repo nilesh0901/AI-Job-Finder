@@ -4,6 +4,14 @@ import Column from './Column'
 import JobCard from './JobCard'
 import { updateJob } from '../api'
 
+const FIT_CLASS = {
+  'Fitly Perfect!': 'fit-perfect',
+  'Great fit!':     'fit-great',
+  'Good fit':       'fit-good',
+  'Fair match':     'fit-fair',
+  'Low match':      'fit-low',
+}
+
 const COLUMNS = ['wishlist', 'applied', 'interviewing', 'offer', 'rejected']
 const COLUMN_LABELS = {
   wishlist: 'Wishlist', applied: 'Applied', interviewing: 'Interviewing',
@@ -12,21 +20,24 @@ const COLUMN_LABELS = {
 
 export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggestions }) {
   const [activeJob, setActiveJob]       = useState(null)
-  const [activeColumn, setActiveColumn] = useState(COLUMNS[0]) // for mobile tab view
+  const [activeColumn, setActiveColumn] = useState(COLUMNS[0])
   const [refreshing, setRefreshing]     = useState(false)
+  const [hideViewed, setHideViewed]     = useState(false)
 
   const sensors = useSensors(useSensor(PointerSensor, {
     activationConstraint: { distance: 8 },
   }))
 
-  // Suggestions are real `jobs` rows flagged is_suggestion — keep them out of the
-  // status columns and surface them in the read-only Suggested rail instead.
   const regularJobs = jobs.filter(j => !j.is_suggestion)
   const suggestions = jobs.filter(j => j.is_suggestion && j.status === 'wishlist')
 
+  function visibleJobs(list) {
+    return hideViewed ? list.filter(j => !j.viewed_at) : list
+  }
+
   function grouped() {
     return COLUMNS.reduce((acc, col) => {
-      acc[col] = regularJobs.filter(j => j.status === col)
+      acc[col] = visibleJobs(regularJobs.filter(j => j.status === col))
       return acc
     }, {})
   }
@@ -35,10 +46,10 @@ export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggest
     setActiveJob(null)
     if (!over || active.id === over.id) return
     const newStatus = over.id
-    if (!COLUMNS.includes(newStatus)) return   // drops onto 'suggested' are ignored
+    if (!COLUMNS.includes(newStatus)) return
     const job = jobs.find(j => j.id === active.id)
-    if (!job || job.status === newStatus) return
-    // Dragging a suggestion into a real column promotes it to a tracked job.
+    if (!job) return
+    if (!job.is_suggestion && job.status === newStatus) return
     const patch = job.is_suggestion ? { status: newStatus, is_suggestion: false } : { status: newStatus }
     const updated = await updateJob(job.id, patch)
     onJobUpdated(updated)
@@ -57,9 +68,24 @@ export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggest
     return col === 'suggested' ? suggestions : byStatus[col]
   }
 
+  const viewedCount = regularJobs.filter(j => j.viewed_at).length
+
   return (
     <>
-      {/* ── Mobile: tab switcher ─────────────────────────────── */}
+      {/* ── Board controls (desktop only) ─────────────────────────── */}
+      <div className="board-controls">
+        {viewedCount > 0 && (
+          <button
+            className={`hide-viewed-toggle ${hideViewed ? 'active' : ''}`}
+            onClick={() => setHideViewed(v => !v)}
+          >
+            <span className="hide-viewed-dot" />
+            {hideViewed ? `Showing unviewed (${viewedCount} hidden)` : `Hide viewed (${viewedCount})`}
+          </button>
+        )}
+      </div>
+
+      {/* ── Mobile: tab switcher ─────────────────────────────────── */}
       <div className="mobile-tabs">
         {mobileTabs.map(col => (
           <button key={col}
@@ -71,7 +97,7 @@ export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggest
         ))}
       </div>
 
-      {/* ── Mobile: single column ────────────────────────────── */}
+      {/* ── Mobile: single column ────────────────────────────────── */}
       <div className="mobile-column-view">
         {activeColumn === 'suggested' && (
           <button className="btn-ghost btn-refresh-mobile" onClick={handleRefresh} disabled={refreshing}>
@@ -92,6 +118,12 @@ export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggest
                 )}
               </div>
               {job.company && <span className="job-card-company">{job.company}</span>}
+              {job.fit_score != null && (
+                <div className={`fit-badge ${FIT_CLASS[job.fit_label] || 'fit-low'}`}>
+                  <span className="fit-score-num">{job.fit_score}</span>
+                  <span>{job.fit_label}</span>
+                </div>
+              )}
               {job.location && <span className="job-card-location">📍 {job.location}</span>}
               {job.is_suggestion && job.source && <span className="job-card-source">{job.source}</span>}
               <div className="job-card-footer">
@@ -108,13 +140,12 @@ export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggest
         )}
       </div>
 
-      {/* ── Desktop: full Kanban ─────────────────────────────── */}
+      {/* ── Desktop: full Kanban ─────────────────────────────────── */}
       <DndContext sensors={sensors} collisionDetection={closestCorners}
         onDragStart={({ active }) => setActiveJob(jobs.find(j => j.id === active.id))}
         onDragEnd={handleDragEnd}>
         <div className="board">
-          {/* Suggested rail — read-only: cards drag OUT, nothing drops IN.
-              Rendered first so it sits as the leading column. */}
+          {/* Suggested rail */}
           <div className="column column-suggested">
             <div className="column-header">
               <span className="column-title column-label">✦ Suggested</span>
