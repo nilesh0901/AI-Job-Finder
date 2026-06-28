@@ -37,7 +37,9 @@ export default function Board({ jobs, onJobClick, onJobUpdated, onRefreshSuggest
     const newStatus = over.id
     if (!COLUMNS.includes(newStatus)) return   // drops onto 'suggested' are ignored
     const job = jobs.find(j => j.id === active.id)
-    if (!job || job.status === newStatus) return
+    if (!job) return
+    // Allow drop when: job is a suggestion (always promote) OR status actually changes.
+    if (!job.is_suggestion && job.status === newStatus) return
     // Dragging a suggestion into a real column promotes it to a tracked job.
     const patch = job.is_suggestion ? { status: newStatus, is_suggestion: false } : { status: newStatus }
     const updated = await updateJob(job.id, patch)
