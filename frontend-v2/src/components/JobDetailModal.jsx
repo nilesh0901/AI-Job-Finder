@@ -45,6 +45,7 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
   const { user }          = useAuth()
   const [activeTab, setActiveTab] = useState(0)
   const [notes, setNotes] = useState(job.notes || '')
+  const [status, setStatus] = useState(job.status || 'wishlist')
   const [aiContent, setAiContent] = useState(job.ai_content || {})
   const [atsResumes, setAtsResumes] = useState([])
   const [selectedAts, setSelectedAts] = useState(null)
@@ -89,6 +90,18 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
   async function handleNotesSave() {
     const updated = await updateJob(job.id, { notes })
     onUpdated(updated)
+  }
+
+  async function handleStatusChange(e) {
+    const next = e.target.value
+    setStatus(next)
+    try {
+      const updated = await updateJob(job.id, { status: next })
+      onUpdated(updated)
+    } catch (err) {
+      setError(err.message)
+      setStatus(job.status || 'wishlist')
+    }
   }
 
   async function handleGenerateAI() {
@@ -188,7 +201,21 @@ export default function JobDetailModal({ job, onClose, onUpdated, onDeleted }) {
             <h2>{job.title}</h2>
             {job.company && <span className="detail-company">{job.company}</span>}
           </div>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <div className="modal-header-right">
+            <select
+              className="input status-select"
+              value={status}
+              onChange={handleStatusChange}
+              aria-label="Job status"
+            >
+              <option value="wishlist">Wishlist</option>
+              <option value="applied">Applied</option>
+              <option value="interviewing">Interviewing</option>
+              <option value="offer">Offer</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <button className="modal-close" onClick={onClose}>✕</button>
+          </div>
         </div>
 
         {/* AI Tabs */}

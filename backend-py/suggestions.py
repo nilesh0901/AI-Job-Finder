@@ -25,6 +25,9 @@ from datetime import datetime, timezone, timedelta
 
 import httpx
 from supabase import create_client, Client
+from urllib.parse import urlsplit, urlunsplit
+
+from fit_score import calculate_fit_score
 
 REMOTEOK_URL   = "https://remoteok.com/api"
 ARBEITNOW_URL  = "https://www.arbeitnow.com/api/job-board-api"
@@ -130,13 +133,20 @@ async def _fetch_indeed(keywords: list[str], city: str, country: str,
         try:
             r = await client.get(INDEED_RSS_URL, params=params)
             r.raise_for_status()
-            root = ET.fromstring(r.text)
+            body = r.text or ""
+            if not body.strip().startswith("<"):
+                print(f"[suggestions] Indeed RSS returned non-XML body ({len(body)} chars, "
+                      f"status={r.status_code}) — likely deprecated/blocked. First 200 chars: {body[:200]!r}")
+                return []
+            root = ET.fromstring(body)
         except Exception as e:
-            print(f"[suggestions] Indeed RSS fetch failed: {e}")
+            print(f"[suggestions] Indeed RSS fetch failed (url={INDEED_RSS_URL} params={params}): {e}")
             return []
 
         ns = {"dc": "http://purl.org/dc/elements/1.1/"}
         items = root.findall(".//item")
+        if not items:
+            print(f"[suggestions] Indeed RSS returned 0 items for q='{query}' l='{location}'")
         for item in items:
             title   = (item.findtext("title") or "").strip()
             link    = (item.findtext("link") or "").strip()
@@ -470,9 +480,43 @@ async def _fetch_jooble(keywords: list[str], location: str, freshness_days: int)
     return []
 
 
-def _get_existing_urls(supabase: Client, user_id: str) -> set[str]:
-    response = supabase.table("jobs").select("url").eq("user_id", user_id).execute()
-    return {row["url"] for row in (response.data or []) if row.get("url")}
+def _normalize_url(url: str) -> str:
+    """Normalize a URL for dedup: lowercase host, strip query/fragment, drop trailing slash.
+
+    Without this, the same job posted via two slightly different links (with vs without
+    tracking params, http vs https, trailing slash, etc.) slips past the dedup check
+    and ends up in the Suggested column twice.
+    """
+    if not url:
+        return ""
+    try:
+        s = urlsplit(url.strip())
+        scheme = (s.scheme or "https").lower()
+        netloc = s.netloc.lower()
+        path = (s.path or "").rstrip("/")
+        return urlunsplit((scheme, netloc, path, "", ""))
+    except Exception:
+        return url.strip().lower().rstrip("/")
+
+
+def _dedup_key(job: dict) -> tuple[str, str]:
+    """Secondary dedup key: (lowercased title, lowercased company). Catches the same role
+    surfaced by two different sources (Remotive + RemoteOK) with different canonical URLs."""
+    return (
+        (job.get("title") or "").strip().lower(),
+        (job.get("company") or "").strip().lower(),
+    )
+
+
+def _get_existing_urls(supabase: Client, user_id: str) -> tuple[set[str], set[tuple[str, str]]]:
+    response = supabase.table("jobs").select("url,title,company").eq("user_id", user_id).execute()
+    rows = response.data or []
+    urls = {_normalize_url(r["url"]) for r in rows if r.get("url")}
+    pairs = {
+        ((r.get("title") or "").strip().lower(), (r.get("company") or "").strip().lower())
+        for r in rows if r.get("title") and r.get("company")
+    }
+    return urls, pairs
 
 
 async def refresh_suggestions(user_id: str) -> dict:
@@ -532,19 +576,26 @@ async def refresh_suggestions(user_id: str) -> dict:
           f"adzuna={len(adzuna_jobs)} jooble={len(jooble_jobs)} "
           f"remoteok={len(remoteok_jobs)} arbeitnow={len(arbeitnow_jobs)} hn={len(hn_jobs)}")
 
-    existing_urls = _get_existing_urls(supabase, user_id)
+    existing_urls, existing_pairs = _get_existing_urls(supabase, user_id)
 
     # Dedup: India sources first, then remote supplements
     all_candidates = (
         indeed_jobs + adzuna_jobs + jooble_jobs +
         remotive_jobs + remoteok_jobs + arbeitnow_jobs + hn_jobs
     )
-    seen: set[str] = set(existing_urls)
+    seen_urls: set[str] = set(existing_urls)
+    seen_pairs: set[tuple[str, str]] = set(existing_pairs)
     new_jobs: list[dict] = []
     for j in all_candidates:
-        if j["url"] in seen:
+        norm = _normalize_url(j.get("url", ""))
+        if not norm or norm in seen_urls:
             continue
-        seen.add(j["url"])
+        pair = _dedup_key(j)
+        if pair[0] and pair[1] and pair in seen_pairs:
+            continue
+        seen_urls.add(norm)
+        if pair[0] and pair[1]:
+            seen_pairs.add(pair)
         new_jobs.append(j)
 
     def _count(name: str) -> int:
@@ -564,8 +615,26 @@ async def refresh_suggestions(user_id: str) -> dict:
         return {"inserted": 0, "sources": source_counts}
 
     now  = datetime.now(timezone.utc).isoformat()
-    rows = [
-        {
+    rows = []
+    for j in new_jobs:
+        # Compute fit score for the suggestion. Without raw_description, we feed the
+        # source notes (which often include tags / category) so keyword matching has
+        # something to work with — better than zero coverage on suggestion cards.
+        fit_input = {
+            "title":           j.get("title", ""),
+            "raw_description": j.get("notes", ""),
+            "location":        j.get("location", ""),
+            "work_mode":       "remote" if _is_remote(j.get("location", "")) else "",
+            "seniority":       "",
+            "salary_text":     "",
+        }
+        try:
+            fs = calculate_fit_score(fit_input, profile)
+        except Exception as e:
+            print(f"[suggestions] fit_score failed for '{j.get('title','')}': {e}")
+            fs = {"score": None, "label": None}
+
+        rows.append({
             "user_id":       user_id,
             "title":         j["title"],
             "company":       j["company"],
@@ -576,9 +645,9 @@ async def refresh_suggestions(user_id: str) -> dict:
             "source":        j.get("source", ""),
             "is_suggestion": True,
             "added_at":      now,
-        }
-        for j in new_jobs
-    ]
+            "fit_score":     fs.get("score"),
+            "fit_label":     fs.get("label"),
+        })
 
     supabase.table("jobs").insert(rows).execute()
     print(f"[suggestions] inserted {len(rows)} jobs for user {user_id}")

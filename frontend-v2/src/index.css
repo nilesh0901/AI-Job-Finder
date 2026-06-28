@@ -320,6 +320,15 @@ a { color: var(--primary); text-decoration: none; }
   border-radius: var(--r-sm); transition: background var(--transition);
 }
 .modal-close:hover { background: var(--surface-3); color: var(--ink); }
+.modal-header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.status-select {
+  width: auto; min-width: 140px; padding: 6px 10px; font-size: 13px;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+}
+.settings-loading {
+  padding: 12px 24px; font-size: 13px; color: var(--ink-2); border-bottom: 1px solid var(--border);
+}
 
 .modal-body    { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
 .modal-form    { display: flex; flex-direction: column; gap: 12px; padding: 20px 24px; overflow-y: auto; flex: 1; }
